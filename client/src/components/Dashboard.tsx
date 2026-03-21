@@ -14,8 +14,15 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { TerminalPanel } from './TerminalPanel.js';
 import { SessionGroup } from './SessionGroup.js';
+import { GitDiffPanel } from './GitDiffPanel.js';
+import { useGitDiff } from '../hooks/useGitDiff.js';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+interface DiffState {
+  isOpen: boolean;
+  isFullscreen: boolean;
+}
 
 interface DashboardProps {
   sessions: SessionInfo[];
@@ -28,6 +35,10 @@ interface DashboardProps {
   focusedSessionId: string | null;
   onFocusSession: (id: string) => void;
   onUnfocusSession: () => void;
+  getDiffState: (sessionId: string) => DiffState;
+  onToggleDiff: (sessionId: string) => void;
+  onToggleDiffFullscreen: (sessionId: string) => void;
+  onCloseDiff: (sessionId: string) => void;
 }
 
 function groupSessionsByFolder(sessions: SessionInfo[]): Map<string, SessionInfo[]> {
@@ -48,6 +59,41 @@ function triggerRefit() {
   }
 }
 
+function FocusedDiffWrapper({
+  sessionId,
+  sessionStatus,
+  diffState,
+  theme,
+  onClose,
+  onToggleFullscreen,
+}: {
+  sessionId: string;
+  sessionStatus: string;
+  diffState: DiffState;
+  theme: 'dark' | 'light';
+  onClose: () => void;
+  onToggleFullscreen: () => void;
+}) {
+  const { diff, isLoading, error, refresh } = useGitDiff({
+    sessionId,
+    isOpen: diffState.isOpen,
+    sessionStatus: sessionStatus as 'running' | 'waiting' | 'idle' | 'exited',
+  });
+
+  return (
+    <GitDiffPanel
+      diff={diff}
+      theme={theme}
+      isLoading={isLoading}
+      error={error}
+      isFullscreen={diffState.isFullscreen}
+      onClose={onClose}
+      onToggleFullscreen={onToggleFullscreen}
+      onRefresh={refresh}
+    />
+  );
+}
+
 export function Dashboard({
   sessions,
   socket,
@@ -59,6 +105,10 @@ export function Dashboard({
   focusedSessionId,
   onFocusSession,
   onUnfocusSession,
+  getDiffState,
+  onToggleDiff,
+  onToggleDiffFullscreen,
+  onCloseDiff,
 }: DashboardProps) {
   const isDark = theme === 'dark';
   const isFocused = !!focusedSessionId;
@@ -202,28 +252,63 @@ export function Dashboard({
                 {focusedSession.folderPath}
               </span>
             </div>
-            <button
-              onClick={handleUnfocus}
-              style={{
-                padding: '4px 12px',
-                fontSize: '12px',
-                border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
-                borderRadius: '4px',
-                background: 'transparent',
-                color: isDark ? '#a9b1d6' : '#565c73',
-                cursor: 'pointer',
-              }}
-            >
-              Exit Focus
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => onToggleDiff(focusedSession.id)}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '12px',
+                  border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+                  borderRadius: '4px',
+                  background: getDiffState(focusedSession.id).isOpen ? '#7aa2f7' : 'transparent',
+                  color: getDiffState(focusedSession.id).isOpen ? '#ffffff' : (isDark ? '#a9b1d6' : '#565c73'),
+                  cursor: 'pointer',
+                }}
+                title="Toggle diff view"
+              >
+                Diff
+              </button>
+              <button
+                onClick={handleUnfocus}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '12px',
+                  border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+                  borderRadius: '4px',
+                  background: 'transparent',
+                  color: isDark ? '#a9b1d6' : '#565c73',
+                  cursor: 'pointer',
+                }}
+              >
+                Exit Focus
+              </button>
+            </div>
           </div>
-          <div style={{ flex: 1, minHeight: 0, padding: '8px', display: 'flex', flexDirection: 'column' }}>
-            <TerminalPanel
-              session={focusedSession}
-              socket={socket}
-              theme={theme}
-              onDelete={onDeleteSession}
-            />
+          <div style={{ flex: 1, minHeight: 0, padding: '8px', display: 'flex', flexDirection: 'row' }}>
+            {/* Terminal — hidden when diff is fullscreen */}
+            {!(getDiffState(focusedSession.id).isOpen && getDiffState(focusedSession.id).isFullscreen) && (
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                <TerminalPanel
+                  session={focusedSession}
+                  socket={socket}
+                  theme={theme}
+                  onDelete={onDeleteSession}
+                  onToggleDiff={onToggleDiff}
+                  isDiffOpen={getDiffState(focusedSession.id).isOpen}
+                />
+              </div>
+            )}
+            {/* Diff panel */}
+            {getDiffState(focusedSession.id).isOpen && (
+              <FocusedDiffWrapper
+                sessionId={focusedSession.id}
+                sessionStatus={focusedSession.status}
+                diffState={getDiffState(focusedSession.id)}
+                theme={theme}
+                onClose={() => onCloseDiff(focusedSession.id)}
+                onToggleFullscreen={() => onToggleDiffFullscreen(focusedSession.id)}
+              />
+            )}
           </div>
         </div>
       )}
@@ -254,6 +339,7 @@ export function Dashboard({
                 onDeleteSession={onDeleteSession}
                 onCloneSession={onCloneSession}
                 onFocusSession={onFocusSession}
+                onToggleDiff={onToggleDiff}
               />
             ))}
           </div>

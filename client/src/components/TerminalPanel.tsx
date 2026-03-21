@@ -28,9 +28,11 @@ interface TerminalPanelProps {
   theme: 'dark' | 'light';
   onDelete: (id: string) => void;
   onFocus?: (id: string) => void;
+  onToggleDiff?: (id: string) => void;
+  isDiffOpen?: boolean;
 }
 
-export function TerminalPanel({ session, socket, theme, onDelete, onFocus }: TerminalPanelProps) {
+export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onToggleDiff, isDiffOpen }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   useTerminal(containerRef, { sessionId: session.id, socket, theme });
 
@@ -147,6 +149,18 @@ export function TerminalPanel({ session, socket, theme, onDelete, onFocus }: Ter
           >
             {STATUS_LABELS[session.status]}
           </span>
+          {onToggleDiff && (
+            <button
+              onClick={() => onToggleDiff(session.id)}
+              style={{
+                ...headerBtnStyle,
+                color: isDiffOpen ? '#7aa2f7' : headerBtnStyle.color,
+              }}
+              title="Toggle diff view"
+            >
+              {'\u2A25'}
+            </button>
+          )}
           {onFocus && (
             <button
               onClick={() => onFocus(session.id)}

@@ -7,6 +7,11 @@ import { CreateSessionModal } from './components/CreateSessionModal.js';
 
 type Theme = 'dark' | 'light';
 
+interface DiffState {
+  isOpen: boolean;
+  isFullscreen: boolean;
+}
+
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem('theme');
   if (stored === 'dark' || stored === 'light') return stored;
@@ -17,6 +22,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
+  const [diffStates, setDiffStates] = useState<Map<string, DiffState>>(new Map());
   const socket = useSocket();
   const { sessions, createSession, deleteSession } = useSessions(socket);
   const { getOrderedSessions, reorder } = useSessionOrder();
@@ -30,16 +36,49 @@ export default function App() {
     document.body.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   }, [isDark]);
 
-  // Escape key exits focus mode
+  const triggerRefit = useCallback(() => {
+    for (const delay of [50, 150, 350]) {
+      setTimeout(() => window.dispatchEvent(new Event('terminal:refit')), delay);
+    }
+  }, []);
+
+  const getDiffState = useCallback(
+    (sessionId: string): DiffState => diffStates.get(sessionId) || { isOpen: false, isFullscreen: false },
+    [diffStates],
+  );
+
+  const setDiffState = useCallback((sessionId: string, update: Partial<DiffState>) => {
+    setDiffStates((prev) => {
+      const next = new Map(prev);
+      const current = next.get(sessionId) || { isOpen: false, isFullscreen: false };
+      next.set(sessionId, { ...current, ...update });
+      return next;
+    });
+  }, []);
+
+  // Escape key priority: diff fullscreen → diff close → exit focus
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && focusedSessionId) {
+      if (e.key !== 'Escape') return;
+
+      if (focusedSessionId) {
+        const ds = getDiffState(focusedSessionId);
+        if (ds.isOpen && ds.isFullscreen) {
+          setDiffState(focusedSessionId, { isFullscreen: false });
+          triggerRefit();
+          return;
+        }
+        if (ds.isOpen) {
+          setDiffState(focusedSessionId, { isOpen: false, isFullscreen: false });
+          triggerRefit();
+          return;
+        }
         setFocusedSessionId(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusedSessionId]);
+  }, [focusedSessionId, getDiffState, setDiffState, triggerRefit]);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
@@ -76,6 +115,40 @@ export default function App() {
   const handleUnfocus = useCallback(() => {
     setFocusedSessionId(null);
   }, []);
+
+  const handleToggleDiff = useCallback(
+    (sessionId: string) => {
+      const ds = getDiffState(sessionId);
+      if (ds.isOpen) {
+        setDiffState(sessionId, { isOpen: false, isFullscreen: false });
+      } else {
+        // In grid view, auto-focus first then open diff
+        if (focusedSessionId !== sessionId) {
+          setFocusedSessionId(sessionId);
+        }
+        setDiffState(sessionId, { isOpen: true, isFullscreen: false });
+      }
+      triggerRefit();
+    },
+    [focusedSessionId, getDiffState, setDiffState, triggerRefit],
+  );
+
+  const handleToggleDiffFullscreen = useCallback(
+    (sessionId: string) => {
+      const ds = getDiffState(sessionId);
+      setDiffState(sessionId, { isFullscreen: !ds.isFullscreen });
+      triggerRefit();
+    },
+    [getDiffState, setDiffState, triggerRefit],
+  );
+
+  const handleCloseDiff = useCallback(
+    (sessionId: string) => {
+      setDiffState(sessionId, { isOpen: false, isFullscreen: false });
+      triggerRefit();
+    },
+    [setDiffState, triggerRefit],
+  );
 
   const orderedSessions = getOrderedSessions(sessions);
 
@@ -151,6 +224,10 @@ export default function App() {
         focusedSessionId={focusedSessionId}
         onFocusSession={handleFocus}
         onUnfocusSession={handleUnfocus}
+        getDiffState={getDiffState}
+        onToggleDiff={handleToggleDiff}
+        onToggleDiffFullscreen={handleToggleDiffFullscreen}
+        onCloseDiff={handleCloseDiff}
       />
 
       {showCreateModal && (

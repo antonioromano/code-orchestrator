@@ -17,6 +17,7 @@ interface SessionGroupProps {
   onDeleteSession: (id: string) => void;
   onCloneSession: (folderPath: string) => void;
   onFocusSession?: (id: string) => void;
+  onToggleDiff?: (id: string) => void;
 }
 
 export function SessionGroup({
@@ -27,6 +28,7 @@ export function SessionGroup({
   onDeleteSession,
   onCloneSession,
   onFocusSession,
+  onToggleDiff,
 }: SessionGroupProps) {
   const isDark = theme === 'dark';
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -144,6 +146,7 @@ export function SessionGroup({
               theme={theme}
               onDelete={onDeleteSession}
               onFocus={onFocusSession}
+              onToggleDiff={onToggleDiff}
             />
           ))}
         </div>
