@@ -1,4 +1,4 @@
-import type { SessionInfo, CreateSessionRequest, PathCompletionResponse, DirectoryChildrenResponse } from '@remote-orchestrator/shared';
+import type { SessionInfo, CreateSessionRequest, PathCompletionResponse, DirectoryChildrenResponse, GitDiffResponse } from '@remote-orchestrator/shared';
 
 const API_BASE = '/api';
 
@@ -57,5 +57,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ order }),
     });
+  },
+
+  getSessionDiff: async (sessionId: string): Promise<GitDiffResponse> => {
+    const res = await fetch(`${API_BASE}/sessions/${sessionId}/diff`);
+    return res.json();
   },
 };
