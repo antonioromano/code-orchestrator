@@ -35,6 +35,12 @@ export interface ServerToClientEvents {
   'session:deleted': (payload: { sessionId: string }) => void;
 }
 
+export interface GitDiffResponse {
+  unstaged: string;
+  staged: string;
+  error?: string;
+}
+
 export interface DirectoryEntry {
   name: string;
   path: string;

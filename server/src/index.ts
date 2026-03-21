@@ -9,6 +9,7 @@ import { SessionManager } from './services/SessionManager.js';
 import { OrderStore } from './persistence/OrderStore.js';
 import { createSessionRoutes } from './routes/sessions.js';
 import { createFilesystemRoutes } from './routes/filesystem.js';
+import { createGitRoutes } from './routes/git.js';
 import { setupSocketHandler } from './socket/handler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,6 +38,7 @@ app.get('/api/health', (_req, res) => {
 });
 app.use('/api/sessions', createSessionRoutes(sessionManager, orderStore));
 app.use('/api/fs', createFilesystemRoutes());
+app.use('/api', createGitRoutes(sessionManager));
 
 // Socket.io
 setupSocketHandler(io, sessionManager);
