@@ -16,8 +16,8 @@
   --space-8: 32px;
 
   /* === BORDER RADIUS === */
-  --radius-sm:   4px;
-  --radius-md:   6px;
+  --radius-sm:   2px;
+  --radius-md:   4px;
   --radius-lg:   8px;
   --radius-xl:  12px;
   --radius-pill: 10px;
@@ -28,11 +28,12 @@
   --z-tooltip:   300;
 
   /* === LAYOUT === */
-  --header-height: 52px;
+  --header-height:   52px;
+  --nav-tabs-height: 40px;
 
   /* === TYPOGRAPHY === */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: Menlo, Monaco, "Courier New", monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', Menlo, Monaco, "Courier New", monospace;
 
   --text-xs:   10px;
   --text-sm:   11px;
@@ -46,66 +47,83 @@
   --transition-fast: 0.12s ease;
   --transition-base: 0.18s ease;
 
+  /* === SHADOWS === */
+  --shadow-float: 0 12px 40px rgba(0,0,0,0.4), 0 0 8px rgba(122,162,247,0.1);
+
   /* === STATUS COLORS (same in both themes) === */
   --color-status-waiting: #f59e0b;
-  --color-status-running: #3b82f6;
-  --color-status-idle:    #22c55e;
+  --color-status-running: #aec6ff;
+  --color-status-idle:    #a5d570;
   --color-status-exited:  #6b7280;
 
   /* ── LIGHT THEME (default) ── */
-  --color-bg-base:     #f5f5f5;
-  --color-bg-surface:  #efefef;
-  --color-bg-elevated: #ffffff;
-  --color-bg-header:   #e8e8e8;
-  --color-bg-modal:    #ffffff;
+  --color-bg-deepest:  #ffffff;
+  --color-bg-base:     #f9f9ff;
+  --color-bg-surface:  #f1f3fe;
+  --color-bg-elevated: #ebedf8;
+  --color-bg-header:   #f9f9ff;
+  --color-bg-modal:    #ebedf8;
   --color-bg-input:    #ffffff;
   --color-bg-code:     #f0f0f0;
+  --color-bg-card:     #f1f3fe;
 
-  --color-border-base:   #d0d0d0;
-  --color-border-subtle: #c0c0c0;
+  --color-surface-bright:   #e5e8f3;
+  --color-surface-high:     #e0e2ed;
+  --color-surface-highest:  #e0e2ed;
 
-  --color-text-primary:   #343b58;
-  --color-text-secondary: #565c73;
-  --color-text-muted:     #8b8fa3;
+  --color-border-base:   #c4c6d1;
+  --color-border-subtle: #747780;
 
-  --color-accent:        #3b5998;
-  --color-accent-bg:     #f0f4ff;
-  --color-accent-subtle: rgba(59, 89, 152, 0.1);
-  --color-success:       #1a7f37;
-  --color-error:         #cf222e;
-  --color-error-bg:      #fee2e2;
-  --color-error-subtle:  rgba(207, 34, 46, 0.08);
-  --color-warning:       #a06800;
-  --color-warning-bg:    rgba(180, 120, 0, 0.07);
-  --color-warning-border: #c08000;
+  --color-text-primary:   #181c23;
+  --color-text-secondary: #43474f;
+  --color-text-muted:     #747780;
+
+  --color-accent:           #193c71;
+  --color-accent-bg:        #f0f4ff;
+  --color-accent-subtle:    rgba(25, 60, 113, 0.1);
+  --color-primary-container: #7aa2f7;
+  --color-success:          #1a7f37;
+  --color-error:            #cf222e;
+  --color-error-bg:         #fee2e2;
+  --color-error-subtle:     rgba(207, 34, 46, 0.08);
+  --color-warning:          #a06800;
+  --color-warning-bg:       rgba(180, 120, 0, 0.07);
+  --color-warning-border:   #c08000;
 }
 
 [data-theme="dark"] {
-  --color-bg-base:     #1a1b26;
-  --color-bg-surface:  #1e1f2e;
-  --color-bg-elevated: #24283b;
-  --color-bg-header:   #16161e;
-  --color-bg-modal:    #24283b;
+  --color-bg-deepest:  #0c0d18;
+  --color-bg-base:     #12131d;
+  --color-bg-surface:  #1a1b26;
+  --color-bg-elevated: #1e1f2a;
+  --color-bg-header:   #0c0d18;
+  --color-bg-modal:    #1e1f2a;
   --color-bg-input:    #1a1b26;
-  --color-bg-code:     #16161e;
+  --color-bg-code:     #0c0d18;
+  --color-bg-card:     #1a1b26;
+
+  --color-surface-bright:   #383844;
+  --color-surface-high:     #282935;
+  --color-surface-highest:  #333440;
 
   --color-border-base:   #2f3549;
-  --color-border-subtle: #3b4261;
+  --color-border-subtle: #434751;
 
-  --color-text-primary:   #c0caf5;
-  --color-text-secondary: #a9b1d6;
-  --color-text-muted:     #565f89;
+  --color-text-primary:   #e2e1f1;
+  --color-text-secondary: #c3c6d3;
+  --color-text-muted:     #8d909d;
 
-  --color-accent:        #7aa2f7;
-  --color-accent-bg:     #1e1f2e;
-  --color-accent-subtle: rgba(122, 162, 247, 0.12);
-  --color-success:       #9ece6a;
-  --color-error:         #f7768e;
-  --color-error-bg:      #3b2030;
-  --color-error-subtle:  rgba(247, 118, 142, 0.1);
-  --color-warning:       #e0af68;
-  --color-warning-bg:    rgba(224, 175, 104, 0.08);
-  --color-warning-border: #e0af68;
+  --color-accent:           #7aa2f7;
+  --color-accent-bg:        #1a1b26;
+  --color-accent-subtle:    rgba(122, 162, 247, 0.12);
+  --color-primary-container: #7aa2f7;
+  --color-success:          #a5d570;
+  --color-error:            #f7768e;
+  --color-error-bg:         #3b2030;
+  --color-error-subtle:     rgba(247, 118, 142, 0.1);
+  --color-warning:          #e0af68;
+  --color-warning-bg:       rgba(224, 175, 104, 0.08);
+  --color-warning-border:   #e0af68;
 }
 
 /* ── Global styles that depend on tokens ── */

@@ -18,7 +18,6 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }
   useEffect(() => {
     if (collapseAllKey) setExpanded(false);
   }, [collapseAllKey]);
-  const isDark = theme === 'dark';
 
   const fileName = file.to === '/dev/null' ? file.from : file.to;
   const isBinary = file.chunks.length === 0 && (file.additions === 0 && file.deletions === 0);
@@ -35,7 +34,7 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }
     <div
       style={{
         borderRadius: '6px',
-        border: `1px solid ${isDark ? '#2f3549' : '#d0d0d0'}`,
+        border: '1px solid var(--color-border-base)',
         overflow: 'hidden',
         marginBottom: '8px',
       }}
@@ -47,7 +46,7 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }
           alignItems: 'center',
           gap: '8px',
           padding: '6px 12px',
-          background: isDark ? '#16161e' : '#e8e8e8',
+          background: 'var(--color-bg-elevated)',
           cursor: 'pointer',
           userSelect: 'none',
         }}
@@ -55,7 +54,7 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }
         <span
           style={{
             fontSize: '11px',
-            color: isDark ? '#565f89' : '#8b8fa3',
+            color: 'var(--color-text-muted)',
             width: '12px',
             textAlign: 'center',
           }}
@@ -65,8 +64,8 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }
         <span
           style={{
             fontSize: '12px',
-            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-            color: isDark ? '#c0caf5' : '#343b58',
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-text-primary)',
             flex: 1,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -76,17 +75,17 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }
           {fileName || 'unknown'}
         </span>
         {isNew && (
-          <span style={{ fontSize: '10px', color: '#9ece6a', fontWeight: 600 }}>NEW</span>
+          <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 600 }}>NEW</span>
         )}
         {isDeleted && (
-          <span style={{ fontSize: '10px', color: '#f7768e', fontWeight: 600 }}>DELETED</span>
+          <span style={{ fontSize: '10px', color: 'var(--color-error)', fontWeight: 600 }}>DELETED</span>
         )}
         <span style={{ fontSize: '11px', display: 'flex', gap: '6px', flexShrink: 0 }}>
           {file.additions > 0 && (
-            <span style={{ color: isDark ? '#9ece6a' : '#1a7f37' }}>+{file.additions}</span>
+            <span style={{ color: 'var(--color-success)' }}>+{file.additions}</span>
           )}
           {file.deletions > 0 && (
-            <span style={{ color: isDark ? '#f7768e' : '#cf222e' }}>-{file.deletions}</span>
+            <span style={{ color: 'var(--color-error)' }}>-{file.deletions}</span>
           )}
         </span>
       </div>
@@ -97,7 +96,7 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }
               style={{
                 padding: '12px',
                 fontSize: '12px',
-                color: isDark ? '#565f89' : '#8b8fa3',
+                color: 'var(--color-text-muted)',
                 fontStyle: 'italic',
               }}
             >
@@ -131,10 +130,10 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }
                     style={{
                       padding: '4px 12px',
                       fontSize: '11px',
-                      border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+                      border: '1px solid var(--color-border-base)',
                       borderRadius: '4px',
                       background: 'transparent',
-                      color: isDark ? '#7aa2f7' : '#3b82f6',
+                      color: 'var(--color-accent)',
                       cursor: 'pointer',
                     }}
                   >

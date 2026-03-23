@@ -21,6 +21,7 @@ export function StatusDot({ status, pulse, size = 8 }: StatusDotProps) {
         background: color,
         flexShrink: 0,
         position: 'relative',
+        boxShadow: status !== 'exited' ? `0 0 6px ${color}` : undefined,
         animation: (pulse && status === 'running') ? 'status-pulse 1.8s ease-in-out infinite' : undefined,
       }}
     />

@@ -6,11 +6,16 @@ import { useSessions } from './hooks/useSessions.js';
 import { useSessionOrder } from './hooks/useSessionOrder.js';
 import { useNgrok } from './hooks/useNgrok.js';
 import { useConfig } from './hooks/useConfig.js';
+import { useGitDiff } from './hooks/useGitDiff.js';
 import { Dashboard } from './components/Dashboard.js';
 import { CreateSessionModal } from './components/CreateSessionModal.js';
 import { CloneSessionModal } from './components/CloneSessionModal.js';
 import { NgrokModal } from './components/NgrokModal.js';
 import { SettingsModal } from './components/SettingsModal.js';
+import { GitDiffPanel } from './components/GitDiffPanel.js';
+import { NavTabs } from './components/NavTabs.js';
+import type { AppTab } from './components/NavTabs.js';
+import { MobileBottomNav } from './components/MobileBottomNav.js';
 import { api } from './services/api.js';
 
 interface DiffState {
@@ -29,6 +34,7 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [cloneModalState, setCloneModalState] = useState<{ folderPath: string; agentType?: string } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AppTab>('sessions');
   const socket = useSocket();
   const { sessions, createSession, deleteSession } = useSessions(socket);
   const ngrok = useNgrok(socket);
@@ -221,7 +227,7 @@ export default function App() {
           height: 'var(--header-height)',
           padding: '0 var(--space-4)',
           background: 'var(--color-bg-header)',
-          borderBottom: '1px solid var(--color-border-base)',
+          borderBottom: 'none',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
@@ -288,10 +294,10 @@ export default function App() {
               fontSize: 'var(--text-md)',
               border: '1px solid transparent',
               borderRadius: 'var(--radius-md)',
-              background: 'var(--color-accent)',
-              color: '#ffffff',
+              background: 'linear-gradient(135deg, #aec6ff 0%, #7aa2f7 100%)',
+              color: '#002e6b',
               cursor: 'pointer',
-              fontWeight: 500,
+              fontWeight: 600,
               gap: '6px',
               transition: 'opacity var(--transition-fast)',
             }}
@@ -303,22 +309,49 @@ export default function App() {
         </div>
       </header>
 
-      <Dashboard
-        sessions={orderedSessions}
-        socket={socket}
-        theme={theme}
-        onDeleteSession={handleDelete}
-        onCreateSession={handleNewSession}
-        onCloneSession={handleClone}
-        onReorder={reorder}
-        focusedSessionId={focusedSessionId}
-        onFocusSession={handleFocus}
-        onUnfocusSession={handleUnfocus}
-        getDiffState={getDiffState}
-        onToggleDiff={handleToggleDiff}
-        onToggleDiffFullscreen={handleToggleDiffFullscreen}
-        onCloseDiff={handleCloseDiff}
+      <NavTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        sessionCount={sessions.length}
       />
+
+      {activeTab === 'sessions' && (
+        <Dashboard
+          sessions={orderedSessions}
+          socket={socket}
+          theme={theme}
+          onDeleteSession={handleDelete}
+          onCreateSession={handleNewSession}
+          onCloneSession={handleClone}
+          onReorder={reorder}
+          focusedSessionId={focusedSessionId}
+          onFocusSession={handleFocus}
+          onUnfocusSession={handleUnfocus}
+          getDiffState={getDiffState}
+          onToggleDiff={handleToggleDiff}
+          onToggleDiffFullscreen={handleToggleDiffFullscreen}
+          onCloseDiff={handleCloseDiff}
+        />
+      )}
+      {activeTab === 'git-diff' && sessions.length > 0 && (
+        <GlobalGitDiffView
+          sessionId={focusedSessionId ?? sessions[0].id}
+          sessionStatus={sessions.find(s => s.id === (focusedSessionId ?? sessions[0].id))?.status ?? 'idle'}
+          theme={theme}
+        />
+      )}
+      {activeTab === 'git-diff' && sessions.length === 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
+          color: 'var(--color-text-muted)',
+          fontSize: 'var(--text-md)',
+        }}>
+          No sessions — create a session to view git diff
+        </div>
+      )}
 
       {showCreateModal && (
         <CreateSessionModal
@@ -440,7 +473,44 @@ export default function App() {
           </div>
         </div>
       )}
+      <MobileBottomNav
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onNewSession={handleNewSession}
+      />
     </>
+  );
+}
+
+/** Full-width git diff view for the Git Diff tab. */
+function GlobalGitDiffView({
+  sessionId,
+  sessionStatus,
+  theme,
+}: {
+  sessionId: string;
+  sessionStatus: string;
+  theme: 'dark' | 'light';
+}) {
+  const { diff, isLoading, error, refresh } = useGitDiff({
+    sessionId,
+    isOpen: true,
+    sessionStatus: sessionStatus as 'running' | 'waiting' | 'idle' | 'exited',
+  });
+
+  return (
+    <div style={{ height: `calc(100vh - var(--header-height) - var(--nav-tabs-height))`, display: 'flex' }}>
+      <GitDiffPanel
+        diff={diff}
+        theme={theme}
+        isLoading={isLoading}
+        error={error}
+        isFullscreen={false}
+        onClose={() => {}}
+        onToggleFullscreen={() => {}}
+        onRefresh={refresh}
+      />
+    </div>
   );
 }
 

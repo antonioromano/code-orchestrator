@@ -9,7 +9,7 @@ import { useTerminal } from '../hooks/useTerminal.js';
 import { StatusDot } from './primitives/index.js';
 import { Badge } from './primitives/index.js';
 import { Tooltip } from './primitives/index.js';
-import { STATUS_COLORS, STATUS_LABELS } from '../constants/status.js';
+import { STATUS_COLORS, STATUS_LABELS, STATUS_GLOW_SHADOWS } from '../constants/status.js';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -36,6 +36,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onTog
   } = useSortable({ id: `session::${session.id}` });
 
   const borderColor = STATUS_COLORS[session.status] ?? STATUS_COLORS.idle;
+  const glowShadow = STATUS_GLOW_SHADOWS[session.status] ?? STATUS_GLOW_SHADOWS.exited;
 
   const iconBtnStyle: React.CSSProperties = {
     display: 'inline-flex',
@@ -64,14 +65,14 @@ export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onTog
       className="terminal-panel"
       style={{
         ...sortableStyle,
-        border: `2px solid ${borderColor}`,
         borderRadius: 'var(--radius-lg)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         minHeight: 0,
         flex: 1,
-        background: 'var(--color-bg-base)',
+        background: 'var(--color-bg-card)',
+        boxShadow: glowShadow,
       }}
     >
       <div
@@ -81,8 +82,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onTog
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '6px 10px',
-          background: 'var(--color-bg-header)',
-          borderBottom: '1px solid var(--color-border-base)',
+          background: 'var(--color-bg-elevated)',
           flexShrink: 0,
           gap: 'var(--space-2)',
         }}
@@ -210,6 +210,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onTog
           flex: 1,
           minHeight: 0,
           padding: '4px',
+          background: 'var(--color-bg-deepest)',
         }}
       />
     </div>

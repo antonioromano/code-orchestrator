@@ -1,0 +1,102 @@
+import { Terminal, GitBranch, FolderOpen, Bug } from 'lucide-react';
+
+export type AppTab = 'sessions' | 'git-diff' | 'explorer' | 'debugger';
+
+interface TabConfig {
+  id: AppTab;
+  label: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  disabled?: boolean;
+}
+
+const TABS: TabConfig[] = [
+  { id: 'sessions',  label: 'Terminal Sessions', icon: Terminal },
+  { id: 'git-diff',  label: 'Git Diff',          icon: GitBranch },
+  { id: 'explorer',  label: 'Explorer',           icon: FolderOpen, disabled: true },
+  { id: 'debugger',  label: 'Debugger',           icon: Bug,        disabled: true },
+];
+
+interface NavTabsProps {
+  activeTab: AppTab;
+  onTabChange: (tab: AppTab) => void;
+  sessionCount?: number;
+}
+
+export function NavTabs({ activeTab, onTabChange, sessionCount }: NavTabsProps) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'stretch',
+        height: 'var(--nav-tabs-height)',
+        background: 'var(--color-bg-header)',
+        borderBottom: '1px solid var(--color-border-base)',
+        flexShrink: 0,
+        overflowX: 'auto',
+      }}
+    >
+      {TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+        const Icon = tab.icon;
+
+        return (
+          <button
+            key={tab.id}
+            onClick={() => !tab.disabled && onTabChange(tab.id)}
+            disabled={tab.disabled}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '0 16px',
+              height: '100%',
+              border: 'none',
+              borderBottom: isActive ? '2px solid var(--color-accent)' : '2px solid transparent',
+              background: isActive ? 'var(--color-surface-bright, var(--color-bg-surface))' : 'transparent',
+              color: tab.disabled
+                ? 'var(--color-text-muted)'
+                : isActive
+                  ? 'var(--color-accent)'
+                  : 'var(--color-text-secondary)',
+              cursor: tab.disabled ? 'not-allowed' : 'pointer',
+              opacity: tab.disabled ? 0.5 : 1,
+              fontSize: 'var(--text-base)',
+              fontWeight: isActive ? 600 : 400,
+              fontFamily: 'var(--font-sans)',
+              transition: 'background var(--transition-fast), color var(--transition-fast)',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => {
+              if (!tab.disabled && !isActive) {
+                e.currentTarget.style.background = 'var(--color-bg-surface)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!tab.disabled && !isActive) {
+                e.currentTarget.style.background = 'transparent';
+              }
+            }}
+          >
+            <Icon size={14} strokeWidth={1.75} />
+            {tab.label}
+            {tab.id === 'sessions' && sessionCount !== undefined && sessionCount > 0 && (
+              <span
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  background: 'var(--color-accent-subtle)',
+                  color: 'var(--color-accent)',
+                  padding: '1px 5px',
+                  borderRadius: 'var(--radius-pill)',
+                  fontWeight: 600,
+                }}
+              >
+                {sessionCount}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

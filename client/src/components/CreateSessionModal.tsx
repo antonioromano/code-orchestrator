@@ -119,8 +119,8 @@ export function CreateSessionModal({ onClose, onCreate, theme, initialFolderPath
                   fontSize: 'var(--text-sm)',
                   fontFamily: 'var(--font-mono)',
                   color: 'var(--color-accent)',
-                  background: 'var(--color-accent-bg)',
-                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-accent-subtle)',
+                  borderRadius: 'var(--radius-md)',
                 }}
               >
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -154,17 +154,52 @@ export function CreateSessionModal({ onClose, onCreate, theme, initialFolderPath
           {agents.length > 0 && (
             <div style={{ marginBottom: 'var(--space-4)' }}>
               <label style={labelStyle}>Agent</label>
-              <select
-                value={agentType}
-                onChange={(e) => setAgentType(e.target.value)}
-                style={selectStyle}
-              >
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}{!agent.builtin ? ' (custom)' : ''}
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                {agents.map((agent) => {
+                  const isSelected = agentType === agent.id;
+                  return (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => setAgentType(agent.id)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '5px 12px',
+                        border: isSelected
+                          ? '1px solid var(--color-accent)'
+                          : '1px solid var(--color-border-subtle)',
+                        borderRadius: 'var(--radius-md)',
+                        background: isSelected ? 'var(--color-accent-subtle)' : 'transparent',
+                        color: isSelected ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                        cursor: 'pointer',
+                        fontSize: 'var(--text-sm)',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: isSelected ? 600 : 400,
+                        transition: 'border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast)',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = 'var(--color-accent)';
+                          e.currentTarget.style.color = 'var(--color-accent)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = 'var(--color-border-subtle)';
+                          e.currentTarget.style.color = 'var(--color-text-secondary)';
+                        }
+                      }}
+                    >
+                      {agent.name}
+                      {!agent.builtin && (
+                        <span style={{ fontSize: 'var(--text-xs)', opacity: 0.7 }}>custom</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -190,9 +225,11 @@ export function CreateSessionModal({ onClose, onCreate, theme, initialFolderPath
 const labelStyle: React.CSSProperties = {
   display: 'block',
   marginBottom: '6px',
-  fontSize: 'var(--text-base)',
-  fontWeight: 500,
-  color: 'var(--color-text-secondary)',
+  fontSize: 'var(--text-xs)',
+  fontWeight: 600,
+  color: 'var(--color-text-muted)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
 };
 
 const inputStyle: React.CSSProperties = {
@@ -201,15 +238,11 @@ const inputStyle: React.CSSProperties = {
   fontSize: 'var(--text-md)',
   border: '1px solid var(--color-border-subtle)',
   borderRadius: 'var(--radius-md)',
-  background: 'var(--color-bg-input)',
+  background: 'var(--color-bg-deepest)',
   color: 'var(--color-text-primary)',
   outline: 'none',
   boxSizing: 'border-box',
-};
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  cursor: 'pointer',
+  fontFamily: 'var(--font-sans)',
 };
 
 function ErrorBanner({ message }: { message: string }) {

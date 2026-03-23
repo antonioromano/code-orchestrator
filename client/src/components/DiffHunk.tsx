@@ -7,28 +7,32 @@ interface DiffHunkProps {
 
 const COLORS = {
   dark: {
-    addBg: '#1a2f1a',
-    addText: '#9ece6a',
-    addGutter: '#2a3f2a',
-    delBg: '#2f1a1a',
-    delText: '#f7768e',
-    delGutter: '#3f2a2a',
-    contextText: '#a9b1d6',
-    hunkBg: '#1e1f2e',
-    hunkText: '#565f89',
-    lineNum: '#565f89',
+    addBg: 'rgba(165,213,112,0.1)',
+    addText: '#a5d570',
+    addGutter: 'rgba(165,213,112,0.15)',
+    addBorder: '#a5d570',
+    delBg: 'rgba(255,180,171,0.1)',
+    delText: '#ffb4ab',
+    delGutter: 'rgba(255,180,171,0.15)',
+    delBorder: '#ffb4ab',
+    contextText: '#c3c6d3',
+    hunkBg: '#1e1f2a',
+    hunkText: '#8d909d',
+    lineNum: '#8d909d',
   },
   light: {
-    addBg: '#e6ffed',
-    addText: '#1a7f37',
-    addGutter: '#ccffd8',
-    delBg: '#ffeef0',
-    delText: '#cf222e',
-    delGutter: '#ffd7d5',
-    contextText: '#343b58',
-    hunkBg: '#f0f0f0',
-    hunkText: '#8b8fa3',
-    lineNum: '#8b8fa3',
+    addBg: 'rgba(165,213,112,0.12)',
+    addText: '#2d6a0e',
+    addGutter: 'rgba(165,213,112,0.2)',
+    addBorder: '#7ab648',
+    delBg: 'rgba(255,180,171,0.12)',
+    delText: '#ba1a1a',
+    delGutter: 'rgba(255,180,171,0.2)',
+    delBorder: '#e05a4a',
+    contextText: '#43474f',
+    hunkBg: '#ebedf8',
+    hunkText: '#747780',
+    lineNum: '#747780',
   },
 };
 
@@ -43,7 +47,7 @@ export function DiffHunk({ chunk, theme }: DiffHunkProps) {
           background: c.hunkBg,
           color: c.hunkText,
           fontSize: '12px',
-          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+          fontFamily: 'var(--font-mono)',
         }}
       >
         {chunk.content}
@@ -73,14 +77,21 @@ export function DiffHunk({ chunk, theme }: DiffHunkProps) {
           newLn = String(change.ln2);
         }
 
+        const borderLeft = change.type === 'add'
+          ? `2px solid ${c.addBorder}`
+          : change.type === 'del'
+          ? `2px solid ${c.delBorder}`
+          : 'none';
+
         return (
           <div
             key={i}
             style={{
               display: 'flex',
               background: bg,
+              borderLeft,
               fontSize: '12px',
-              fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+              fontFamily: 'var(--font-mono)',
               lineHeight: '20px',
             }}
           >

@@ -24,7 +24,6 @@ export function GitDiffPanel({
   onToggleFullscreen,
   onRefresh,
 }: GitDiffPanelProps) {
-  const isDark = theme === 'dark';
   const scrollRef = useRef<HTMLDivElement>(null);
   const [collapseAllKey, setCollapseAllKey] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,7 +64,7 @@ export function GitDiffPanel({
   const headerBtnStyle = {
     background: 'none',
     border: 'none',
-    color: isDark ? '#565f89' : '#8b8fa3',
+    color: 'var(--color-text-muted)',
     cursor: 'pointer',
     fontSize: '14px',
     padding: '0 4px',
@@ -82,8 +81,8 @@ export function GitDiffPanel({
         flex: 1,
         minWidth: 0,
         minHeight: 0,
-        background: isDark ? '#1a1b26' : '#f5f5f5',
-        borderLeft: isFullscreen ? 'none' : `1px solid ${isDark ? '#2f3549' : '#d0d0d0'}`,
+        background: 'var(--color-bg-base)',
+        borderLeft: isFullscreen ? 'none' : '1px solid var(--color-border-base)',
       }}
     >
       {/* Header */}
@@ -93,8 +92,8 @@ export function GitDiffPanel({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '6px 12px',
-          background: isDark ? '#16161e' : '#e8e8e8',
-          borderBottom: `1px solid ${isDark ? '#2f3549' : '#d0d0d0'}`,
+          background: 'var(--color-bg-header)',
+          borderBottom: '1px solid var(--color-border-base)',
           flexShrink: 0,
         }}
       >
@@ -103,7 +102,7 @@ export function GitDiffPanel({
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: isDark ? '#c0caf5' : '#343b58',
+              color: 'var(--color-text-primary)',
             }}
           >
             Git Diff
@@ -112,17 +111,17 @@ export function GitDiffPanel({
             <span
               style={{
                 fontSize: '11px',
-                color: isDark ? '#565f89' : '#8b8fa3',
+                color: 'var(--color-text-muted)',
               }}
             >
               {totalFiles} file{totalFiles !== 1 ? 's' : ''}
               {totalAdditions > 0 && (
-                <span style={{ color: isDark ? '#9ece6a' : '#1a7f37', marginLeft: '6px' }}>
+                <span style={{ color: 'var(--color-success)', marginLeft: '6px' }}>
                   +{totalAdditions}
                 </span>
               )}
               {totalDeletions > 0 && (
-                <span style={{ color: isDark ? '#f7768e' : '#cf222e', marginLeft: '4px' }}>
+                <span style={{ color: 'var(--color-error)', marginLeft: '4px' }}>
                   -{totalDeletions}
                 </span>
               )}
@@ -167,8 +166,8 @@ export function GitDiffPanel({
         <div
           style={{
             padding: '4px 12px 6px',
-            background: isDark ? '#16161e' : '#e8e8e8',
-            borderBottom: `1px solid ${isDark ? '#2f3549' : '#d0d0d0'}`,
+            background: 'var(--color-bg-header)',
+            borderBottom: '1px solid var(--color-border-base)',
             flexShrink: 0,
           }}
         >
@@ -183,10 +182,10 @@ export function GitDiffPanel({
               boxSizing: 'border-box',
               fontSize: '12px',
               padding: '3px 8px',
-              border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+              border: '1px solid var(--color-border-subtle)',
               borderRadius: '4px',
-              background: isDark ? '#1a1b26' : '#fff',
-              color: isDark ? '#c0caf5' : '#343b58',
+              background: 'var(--color-bg-input)',
+              color: 'var(--color-text-primary)',
               outline: 'none',
             }}
           />
@@ -211,7 +210,7 @@ export function GitDiffPanel({
               alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
-              color: isDark ? '#565f89' : '#8b8fa3',
+              color: 'var(--color-text-muted)',
               gap: '8px',
             }}
           >
@@ -221,10 +220,10 @@ export function GitDiffPanel({
               style={{
                 padding: '6px 14px',
                 fontSize: '12px',
-                border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '6px',
                 background: 'transparent',
-                color: isDark ? '#a9b1d6' : '#565c73',
+                color: 'var(--color-text-secondary)',
                 cursor: 'pointer',
               }}
             >
@@ -240,7 +239,7 @@ export function GitDiffPanel({
               alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
-              color: isDark ? '#565f89' : '#8b8fa3',
+              color: 'var(--color-text-muted)',
               fontSize: '14px',
             }}
           >
@@ -255,7 +254,7 @@ export function GitDiffPanel({
               alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
-              color: isDark ? '#565f89' : '#8b8fa3',
+              color: 'var(--color-text-muted)',
               fontSize: '14px',
             }}
           >
@@ -269,8 +268,8 @@ export function GitDiffPanel({
               padding: '6px 12px',
               marginBottom: '8px',
               borderRadius: '6px',
-              background: isDark ? '#2f2a1a' : '#fff8e6',
-              color: isDark ? '#f59e0b' : '#92600a',
+              background: 'var(--color-warning-bg)',
+              color: 'var(--color-warning)',
               fontSize: '12px',
             }}
           >
@@ -285,7 +284,7 @@ export function GitDiffPanel({
                 style={{
                   fontSize: '11px',
                   fontWeight: 600,
-                  color: isDark ? '#a9b1d6' : '#565c73',
+                  color: 'var(--color-text-secondary)',
                   textTransform: 'uppercase',
                   padding: '4px 4px 8px',
                   letterSpacing: '0.5px',
@@ -312,7 +311,7 @@ export function GitDiffPanel({
               style={{
                 fontSize: '11px',
                 fontWeight: 600,
-                color: isDark ? '#a9b1d6' : '#565c73',
+                color: 'var(--color-text-secondary)',
                 textTransform: 'uppercase',
                 padding: filteredUnstaged.length > 0 ? '12px 4px 8px' : '4px 4px 8px',
                 letterSpacing: '0.5px',
@@ -338,7 +337,7 @@ export function GitDiffPanel({
               style={{
                 fontSize: '11px',
                 fontWeight: 600,
-                color: isDark ? '#a9b1d6' : '#565c73',
+                color: 'var(--color-text-secondary)',
                 textTransform: 'uppercase',
                 padding: (filteredUnstaged.length > 0 || filteredStaged.length > 0) ? '12px 4px 8px' : '4px 4px 8px',
                 letterSpacing: '0.5px',

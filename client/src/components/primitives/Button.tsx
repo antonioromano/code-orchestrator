@@ -13,8 +13,8 @@ interface ButtonProps {
 
 const VARIANTS: Record<string, React.CSSProperties> = {
   primary: {
-    background: 'var(--color-accent)',
-    color: '#ffffff',
+    background: 'linear-gradient(135deg, #aec6ff 0%, #7aa2f7 100%)',
+    color: '#002e6b',
     border: 'none',
   },
   secondary: {
