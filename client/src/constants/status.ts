@@ -16,10 +16,10 @@ export const STATUS_LABELS: Record<SessionStatus, string> = {
   exited:  'Exited',
 };
 
-/** Box-shadow glows for session card status — combines border ring + ambient glow. */
+/** Ambient glow shadows for session card status (used alongside a solid border). */
 export const STATUS_GLOW_SHADOWS: Record<SessionStatus, string> = {
-  running: '0 0 0 2px #aec6ff, 0 0 12px rgba(174,198,255,0.25)',
-  waiting: '0 0 0 2px #f59e0b, 0 0 12px rgba(245,158,11,0.25)',
-  idle:    '0 0 0 2px #a5d570, 0 0 10px rgba(165,213,112,0.2)',
-  exited:  '0 0 0 1px rgba(107,114,128,0.3)',
+  running: '0 0 10px rgba(174,198,255,0.4)',
+  waiting: '0 0 10px rgba(245,158,11,0.4)',
+  idle:    '0 0 8px rgba(165,213,112,0.35)',
+  exited:  'none',
 };

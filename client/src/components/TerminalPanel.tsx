@@ -65,6 +65,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onTog
       className="terminal-panel"
       style={{
         ...sortableStyle,
+        border: `2px solid ${borderColor}`,
         borderRadius: 'var(--radius-lg)',
         display: 'flex',
         flexDirection: 'column',
