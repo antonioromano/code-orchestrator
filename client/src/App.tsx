@@ -85,19 +85,8 @@ export default function App() {
   }, [triggerRefit]);
 
   // Escape key priority: diff fullscreen → diff close → exit focus
-  // F key: toggle browser fullscreen (when not in a terminal/input)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'f' || e.key === 'F') {
-        const el = document.activeElement;
-        const tag = el?.tagName;
-        const inTerminal = el?.closest('.xterm') != null;
-        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !inTerminal) {
-          toggleFullscreen();
-          return;
-        }
-      }
-
       if (e.key !== 'Escape') return;
 
       if (focusedSessionId) {
@@ -117,7 +106,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusedSessionId, getDiffState, setDiffState, triggerRefit, toggleFullscreen]);
+  }, [focusedSessionId, getDiffState, setDiffState, triggerRefit]);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {

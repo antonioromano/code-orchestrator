@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import parseDiff from 'parse-diff';
 import type { GitDiffResponse } from '@remote-orchestrator/shared';
 import { DiffFileSection } from './DiffFileSection.js';
@@ -26,6 +26,8 @@ export function GitDiffPanel({
 }: GitDiffPanelProps) {
   const isDark = theme === 'dark';
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [collapseAllKey, setCollapseAllKey] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const { stagedFiles, unstagedFiles, branchFiles, totalFiles, totalAdditions, totalDeletions } = useMemo(() => {
     const staged = diff?.staged ? parseDiff(diff.staged) : [];
@@ -48,6 +50,17 @@ export function GitDiffPanel({
   }, [diff]);
 
   const defaultExpanded = totalFiles <= 20;
+
+  const searchLower = searchQuery.toLowerCase();
+  const filteredUnstaged = searchLower
+    ? unstagedFiles.filter(f => (f.to ?? f.from ?? '').toLowerCase().includes(searchLower))
+    : unstagedFiles;
+  const filteredStaged = searchLower
+    ? stagedFiles.filter(f => (f.to ?? f.from ?? '').toLowerCase().includes(searchLower))
+    : stagedFiles;
+  const filteredBranch = searchLower
+    ? branchFiles.filter(f => (f.to ?? f.from ?? '').toLowerCase().includes(searchLower))
+    : branchFiles;
 
   const headerBtnStyle = {
     background: 'none',
@@ -129,6 +142,15 @@ export function GitDiffPanel({
           >
             {'\u21BB'}
           </button>
+          {totalFiles > 0 && !error && (
+            <button
+              onClick={() => setCollapseAllKey(k => k + 1)}
+              style={headerBtnStyle}
+              title="Collapse all"
+            >
+              {'\u2261'}
+            </button>
+          )}
           <button
             onClick={onToggleFullscreen}
             style={headerBtnStyle}
@@ -141,6 +163,35 @@ export function GitDiffPanel({
           </button>
         </div>
       </div>
+      {totalFiles > 0 && !error && (
+        <div
+          style={{
+            padding: '4px 12px 6px',
+            background: isDark ? '#16161e' : '#e8e8e8',
+            borderBottom: `1px solid ${isDark ? '#2f3549' : '#d0d0d0'}`,
+            flexShrink: 0,
+          }}
+        >
+          <input
+            type="text"
+            placeholder="Filter files…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              fontSize: '12px',
+              padding: '3px 8px',
+              border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+              borderRadius: '4px',
+              background: isDark ? '#1a1b26' : '#fff',
+              color: isDark ? '#c0caf5' : '#343b58',
+              outline: 'none',
+            }}
+          />
+        </div>
+      )}
 
       {/* Body */}
       <div
@@ -227,7 +278,7 @@ export function GitDiffPanel({
           </div>
         )}
 
-        {!error && unstagedFiles.length > 0 && (
+        {!error && filteredUnstaged.length > 0 && (
           <div>
             {stagedFiles.length > 0 && (
               <div
@@ -243,18 +294,19 @@ export function GitDiffPanel({
                 Unstaged Changes
               </div>
             )}
-            {unstagedFiles.map((file, i) => (
+            {filteredUnstaged.map((file, i) => (
               <DiffFileSection
                 key={`unstaged-${i}`}
                 file={file}
                 theme={theme}
                 defaultExpanded={defaultExpanded}
+                collapseAllKey={collapseAllKey}
               />
             ))}
           </div>
         )}
 
-        {!error && stagedFiles.length > 0 && (
+        {!error && filteredStaged.length > 0 && (
           <div>
             <div
               style={{
@@ -262,24 +314,25 @@ export function GitDiffPanel({
                 fontWeight: 600,
                 color: isDark ? '#a9b1d6' : '#565c73',
                 textTransform: 'uppercase',
-                padding: unstagedFiles.length > 0 ? '12px 4px 8px' : '4px 4px 8px',
+                padding: filteredUnstaged.length > 0 ? '12px 4px 8px' : '4px 4px 8px',
                 letterSpacing: '0.5px',
               }}
             >
               Staged Changes
             </div>
-            {stagedFiles.map((file, i) => (
+            {filteredStaged.map((file, i) => (
               <DiffFileSection
                 key={`staged-${i}`}
                 file={file}
                 theme={theme}
                 defaultExpanded={defaultExpanded}
+                collapseAllKey={collapseAllKey}
               />
             ))}
           </div>
         )}
 
-        {!error && branchFiles.length > 0 && (
+        {!error && filteredBranch.length > 0 && (
           <div>
             <div
               style={{
@@ -287,18 +340,19 @@ export function GitDiffPanel({
                 fontWeight: 600,
                 color: isDark ? '#a9b1d6' : '#565c73',
                 textTransform: 'uppercase',
-                padding: (unstagedFiles.length > 0 || stagedFiles.length > 0) ? '12px 4px 8px' : '4px 4px 8px',
+                padding: (filteredUnstaged.length > 0 || filteredStaged.length > 0) ? '12px 4px 8px' : '4px 4px 8px',
                 letterSpacing: '0.5px',
               }}
             >
               Branch Changes
             </div>
-            {branchFiles.map((file, i) => (
+            {filteredBranch.map((file, i) => (
               <DiffFileSection
                 key={`branch-${i}`}
                 file={file}
                 theme={theme}
                 defaultExpanded={defaultExpanded}
+                collapseAllKey={collapseAllKey}
               />
             ))}
           </div>

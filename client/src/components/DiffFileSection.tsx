@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type parseDiff from 'parse-diff';
 import { DiffHunk } from './DiffHunk.js';
 
@@ -8,11 +8,16 @@ interface DiffFileSectionProps {
   file: parseDiff.File;
   theme: 'dark' | 'light';
   defaultExpanded: boolean;
+  collapseAllKey?: number;
 }
 
-export function DiffFileSection({ file, theme, defaultExpanded }: DiffFileSectionProps) {
+export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey }: DiffFileSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [showFull, setShowFull] = useState(false);
+
+  useEffect(() => {
+    if (collapseAllKey) setExpanded(false);
+  }, [collapseAllKey]);
   const isDark = theme === 'dark';
 
   const fileName = file.to === '/dev/null' ? file.from : file.to;
