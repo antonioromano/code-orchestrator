@@ -43,12 +43,19 @@ check_port() {
 }
 
 if check_port 5400 || check_port 5173; then
-  echo "Error: Port 5400 or 5173 is in use but servers are not responding." >&2
-  echo "You may have stale processes. Check with:" >&2
-  echo "  lsof -i :5400 -i :5173" >&2
-  echo "" >&2
-  lsof -i :5400 -i :5173 -sTCP:LISTEN 2>/dev/null || true
-  exit 1
+  echo "Killing stale processes on ports 5400/5173..."
+  lsof -i :5400 -i :5173 -sTCP:LISTEN -t 2>/dev/null | xargs kill 2>/dev/null || true
+  sleep 1
+  # Force kill if still alive
+  if check_port 5400 || check_port 5173; then
+    lsof -i :5400 -i :5173 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
+  if check_port 5400 || check_port 5173; then
+    echo "Error: Could not free ports 5400/5173." >&2
+    exit 1
+  fi
+  echo "Ports cleared."
 fi
 
 # --- Open browser when servers are ready (background) ---

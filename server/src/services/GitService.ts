@@ -35,21 +35,53 @@ export class GitService {
     }
   }
 
+  private async findDefaultBranch(folderPath: string): Promise<string | null> {
+    // Try origin/HEAD first
+    try {
+      const ref = (await execGit(['rev-parse', '--abbrev-ref', 'origin/HEAD'], folderPath)).trim();
+      if (ref && ref !== 'origin/HEAD') return ref;
+    } catch { /* ignore */ }
+
+    // Fallback: try common default branch names
+    for (const branch of ['origin/main', 'origin/master', 'origin/develop']) {
+      try {
+        await execGit(['rev-parse', '--verify', branch], folderPath);
+        return branch;
+      } catch { /* ignore */ }
+    }
+    return null;
+  }
+
+  private async getBranchDiff(folderPath: string): Promise<string> {
+    try {
+      const defaultBranch = await this.findDefaultBranch(folderPath);
+      if (!defaultBranch) return '';
+
+      const mergeBase = (await execGit(['merge-base', 'HEAD', defaultBranch], folderPath)).trim();
+      if (!mergeBase) return '';
+
+      return await execGit(['diff', `${mergeBase}...HEAD`], folderPath);
+    } catch {
+      return '';
+    }
+  }
+
   async getDiff(folderPath: string): Promise<GitDiffResponse> {
     const isRepo = await this.isGitRepo(folderPath);
     if (!isRepo) {
-      return { unstaged: '', staged: '', error: 'Not a git repository' };
+      return { unstaged: '', staged: '', branch: '', error: 'Not a git repository' };
     }
 
     try {
-      const [unstaged, staged] = await Promise.all([
+      const [unstaged, staged, branch] = await Promise.all([
         execGit(['diff'], folderPath),
         execGit(['diff', '--cached'], folderPath),
+        this.getBranchDiff(folderPath),
       ]);
-      return { unstaged, staged };
+      return { unstaged, staged, branch };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to get diff';
-      return { unstaged: '', staged: '', error: message };
+      return { unstaged: '', staged: '', branch: '', error: message };
     }
   }
 }

@@ -27,19 +27,21 @@ export function GitDiffPanel({
   const isDark = theme === 'dark';
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { stagedFiles, unstagedFiles, totalFiles, totalAdditions, totalDeletions } = useMemo(() => {
+  const { stagedFiles, unstagedFiles, branchFiles, totalFiles, totalAdditions, totalDeletions } = useMemo(() => {
     const staged = diff?.staged ? parseDiff(diff.staged) : [];
     const unstaged = diff?.unstaged ? parseDiff(diff.unstaged) : [];
+    const branch = diff?.branch ? parseDiff(diff.branch) : [];
     let adds = 0;
     let dels = 0;
-    for (const f of [...staged, ...unstaged]) {
+    for (const f of [...staged, ...unstaged, ...branch]) {
       adds += f.additions;
       dels += f.deletions;
     }
     return {
       stagedFiles: staged,
       unstagedFiles: unstaged,
-      totalFiles: staged.length + unstaged.length,
+      branchFiles: branch,
+      totalFiles: staged.length + unstaged.length + branch.length,
       totalAdditions: adds,
       totalDeletions: dels,
     };
@@ -191,7 +193,7 @@ export function GitDiffPanel({
               fontSize: '14px',
             }}
           >
-            No uncommitted changes
+            No changes
           </div>
         )}
 
@@ -269,6 +271,31 @@ export function GitDiffPanel({
             {stagedFiles.map((file, i) => (
               <DiffFileSection
                 key={`staged-${i}`}
+                file={file}
+                theme={theme}
+                defaultExpanded={defaultExpanded}
+              />
+            ))}
+          </div>
+        )}
+
+        {!error && branchFiles.length > 0 && (
+          <div>
+            <div
+              style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                color: isDark ? '#a9b1d6' : '#565c73',
+                textTransform: 'uppercase',
+                padding: (unstagedFiles.length > 0 || stagedFiles.length > 0) ? '12px 4px 8px' : '4px 4px 8px',
+                letterSpacing: '0.5px',
+              }}
+            >
+              Branch Changes
+            </div>
+            {branchFiles.map((file, i) => (
+              <DiffFileSection
+                key={`branch-${i}`}
                 file={file}
                 theme={theme}
                 defaultExpanded={defaultExpanded}

@@ -38,6 +38,7 @@ export interface ServerToClientEvents {
 export interface GitDiffResponse {
   unstaged: string;
   staged: string;
+  branch: string;
   error?: string;
 }
 

@@ -15,6 +15,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { TerminalPanel } from './TerminalPanel.js';
 import { SessionGroup } from './SessionGroup.js';
 import { GitDiffPanel } from './GitDiffPanel.js';
+import { CollapsedSessionStrip } from './CollapsedSessionStrip.js';
 import { useGitDiff } from '../hooks/useGitDiff.js';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -176,6 +177,12 @@ export function Dashboard({
     triggerRefit();
   };
 
+  // Handle switching focus between sessions with refit
+  const handleSwitchFocus = (id: string) => {
+    onFocusSession(id);
+    triggerRefit();
+  };
+
   // Empty state
   if (sessions.length === 0) {
     return (
@@ -254,6 +261,21 @@ export function Dashboard({
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
+                onClick={() => onCloneSession(focusedSession.folderPath)}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '12px',
+                  border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+                  borderRadius: '4px',
+                  background: 'transparent',
+                  color: isDark ? '#a9b1d6' : '#565c73',
+                  cursor: 'pointer',
+                }}
+                title="New session in this folder"
+              >
+                + Session
+              </button>
+              <button
                 onClick={() => onToggleDiff(focusedSession.id)}
                 style={{
                   padding: '4px 12px',
@@ -284,6 +306,14 @@ export function Dashboard({
               </button>
             </div>
           </div>
+          {sessions.length > 1 && (
+            <CollapsedSessionStrip
+              sessions={sessions}
+              focusedSessionId={focusedSessionId!}
+              theme={theme}
+              onSwitchFocus={handleSwitchFocus}
+            />
+          )}
           <div style={{ flex: 1, minHeight: 0, padding: '8px', display: 'flex', flexDirection: 'row' }}>
             {/* Terminal — hidden when diff is fullscreen */}
             {!(getDiffState(focusedSession.id).isOpen && getDiffState(focusedSession.id).isFullscreen) && (
@@ -319,7 +349,7 @@ export function Dashboard({
           <div
             style={{
               display: 'grid',
-              gridTemplateRows: `repeat(${groupKeys.length}, 1fr)`,
+              gridTemplateColumns: `repeat(${groupKeys.length}, 1fr)`,
               gap: '8px',
               padding: '8px',
               height: '100%',
@@ -340,6 +370,7 @@ export function Dashboard({
                 onCloneSession={onCloneSession}
                 onFocusSession={onFocusSession}
                 onToggleDiff={onToggleDiff}
+                focusedSessionId={focusedSessionId}
               />
             ))}
           </div>

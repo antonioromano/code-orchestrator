@@ -18,6 +18,7 @@ interface SessionGroupProps {
   onCloneSession: (folderPath: string) => void;
   onFocusSession?: (id: string) => void;
   onToggleDiff?: (id: string) => void;
+  focusedSessionId?: string | null;
 }
 
 export function SessionGroup({
@@ -29,6 +30,7 @@ export function SessionGroup({
   onCloneSession,
   onFocusSession,
   onToggleDiff,
+  focusedSessionId,
 }: SessionGroupProps) {
   const isDark = theme === 'dark';
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -138,7 +140,7 @@ export function SessionGroup({
             overflow: 'hidden',
           }}
         >
-          {sessions.map((session) => (
+          {sessions.filter((s) => s.id !== focusedSessionId).map((session) => (
             <TerminalPanel
               key={session.id}
               session={session}

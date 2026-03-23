@@ -38,7 +38,7 @@ export function useGitDiff({ sessionId, isOpen, sessionStatus }: UseGitDiffOptio
       } else {
         setError(null);
         // Only update state if diff content actually changed
-        const newKey = result.unstaged + '||' + result.staged;
+        const newKey = result.unstaged + '||' + result.staged + '||' + result.branch;
         if (newKey !== prevDiffRef.current) {
           prevDiffRef.current = newKey;
           setDiff(result);

@@ -4,6 +4,7 @@ import { useSessions } from './hooks/useSessions.js';
 import { useSessionOrder } from './hooks/useSessionOrder.js';
 import { Dashboard } from './components/Dashboard.js';
 import { CreateSessionModal } from './components/CreateSessionModal.js';
+import { api } from './services/api.js';
 
 type Theme = 'dark' | 'light';
 
@@ -21,6 +22,7 @@ function getInitialTheme(): Theme {
 export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [pickedFolder, setPickedFolder] = useState<string | null>(null);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const [diffStates, setDiffStates] = useState<Map<string, DiffState>>(new Map());
   const socket = useSocket();
@@ -86,6 +88,14 @@ export default function App() {
       localStorage.setItem('theme', next);
       return next;
     });
+  }, []);
+
+  const handleNewSession = useCallback(async () => {
+    const path = await api.pickFolder();
+    if (path) {
+      setPickedFolder(path);
+      setShowCreateModal(true);
+    }
   }, []);
 
   const handleCreate = async (folderPath: string, name?: string) => {
@@ -196,7 +206,7 @@ export default function App() {
             {isDark ? '\u2600' : '\u263E'}
           </button>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={handleNewSession}
             style={{
               padding: '6px 14px',
               fontSize: '14px',
@@ -218,7 +228,7 @@ export default function App() {
         socket={socket}
         theme={theme}
         onDeleteSession={handleDelete}
-        onCreateSession={() => setShowCreateModal(true)}
+        onCreateSession={handleNewSession}
         onCloneSession={handleClone}
         onReorder={reorder}
         focusedSessionId={focusedSessionId}
@@ -232,9 +242,13 @@ export default function App() {
 
       {showCreateModal && (
         <CreateSessionModal
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => {
+            setShowCreateModal(false);
+            setPickedFolder(null);
+          }}
           onCreate={handleCreate}
           theme={theme}
+          initialFolderPath={pickedFolder}
         />
       )}
     </>

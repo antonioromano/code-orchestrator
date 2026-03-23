@@ -6,10 +6,11 @@ interface CreateSessionModalProps {
   onClose: () => void;
   onCreate: (folderPath: string, name?: string) => Promise<void>;
   theme: 'dark' | 'light';
+  initialFolderPath?: string | null;
 }
 
-export function CreateSessionModal({ onClose, onCreate, theme }: CreateSessionModalProps) {
-  const [folderPath, setFolderPath] = useState('');
+export function CreateSessionModal({ onClose, onCreate, theme, initialFolderPath }: CreateSessionModalProps) {
+  const [folderPath, setFolderPath] = useState(initialFolderPath || '');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
@@ -108,45 +109,65 @@ export function CreateSessionModal({ onClose, onCreate, theme }: CreateSessionMo
               Project Folder
             </label>
 
-            <button
-              type="button"
-              onClick={handlePickFolder}
-              disabled={picking}
-              style={{
-                width: '100%',
-                padding: '8px 14px',
-                fontSize: '13px',
-                border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
-                borderRadius: '6px',
-                background: isDark ? '#1a1b26' : '#ffffff',
-                color: isDark ? '#7aa2f7' : '#3b5998',
-                cursor: picking ? 'wait' : 'pointer',
-                marginBottom: '8px',
-                textAlign: 'left',
-                fontWeight: 500,
-              }}
-            >
-              {picking ? 'Opening...' : 'Choose Folder from System...'}
-            </button>
+            {!folderPath ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handlePickFolder}
+                  disabled={picking}
+                  style={{
+                    width: '100%',
+                    padding: '8px 14px',
+                    fontSize: '13px',
+                    border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+                    borderRadius: '6px',
+                    background: isDark ? '#1a1b26' : '#ffffff',
+                    color: isDark ? '#7aa2f7' : '#3b5998',
+                    cursor: picking ? 'wait' : 'pointer',
+                    marginBottom: '8px',
+                    textAlign: 'left',
+                    fontWeight: 500,
+                  }}
+                >
+                  {picking ? 'Opening...' : 'Choose Folder from System...'}
+                </button>
 
-            <FolderTree onSelect={setFolderPath} theme={theme} />
-
-            {folderPath && (
+                <FolderTree onSelect={setFolderPath} theme={theme} />
+              </>
+            ) : (
               <div
                 style={{
-                  marginTop: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
                   padding: '6px 10px',
                   fontSize: '12px',
                   fontFamily: 'Menlo, Monaco, monospace',
                   color: isDark ? '#7aa2f7' : '#3b5998',
                   background: isDark ? '#1a1b26' : '#f0f4ff',
                   borderRadius: '4px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
                 }}
               >
-                {folderPath}
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {folderPath}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFolderPath('')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: isDark ? '#565f89' : '#8b8fa3',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    padding: '0 2px',
+                    lineHeight: 1,
+                    flexShrink: 0,
+                  }}
+                  title="Change folder"
+                >
+                  {'\u2715'}
+                </button>
               </div>
             )}
           </div>
