@@ -23,6 +23,13 @@ export function useGitDiff({ sessionId, isOpen, sessionStatus }: UseGitDiffOptio
   const [error, setError] = useState<string | null>(null);
   const prevDiffRef = useRef<string>('');
   const fetchingRef = useRef(false);
+  const [isTabVisible, setIsTabVisible] = useState(!document.hidden);
+
+  useEffect(() => {
+    const handler = () => setIsTabVisible(!document.hidden);
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
 
   const fetchDiff = useCallback(async () => {
     if (fetchingRef.current) return;
@@ -61,13 +68,13 @@ export function useGitDiff({ sessionId, isOpen, sessionStatus }: UseGitDiffOptio
     fetchDiff();
   }, [isOpen, fetchDiff]);
 
-  // Poll when open and session is running
+  // Poll when open, session is running, and tab is visible
   useEffect(() => {
-    if (!isOpen || sessionStatus !== 'running') return;
+    if (!isOpen || sessionStatus !== 'running' || !isTabVisible) return;
 
     const interval = setInterval(fetchDiff, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isOpen, sessionStatus, fetchDiff]);
+  }, [isOpen, sessionStatus, isTabVisible, fetchDiff]);
 
   return { diff, isLoading, error, refresh: fetchDiff };
 }

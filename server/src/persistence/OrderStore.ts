@@ -1,5 +1,5 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { readFile } from 'fs/promises';
+import { atomicWrite } from '../utils/atomicWrite.js';
 
 export class OrderStore {
   private filePath: string;
@@ -9,8 +9,7 @@ export class OrderStore {
   }
 
   async save(order: string[]): Promise<void> {
-    await mkdir(path.dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(order, null, 2), 'utf-8');
+    await atomicWrite(this.filePath, JSON.stringify(order, null, 2));
   }
 
   async load(): Promise<string[]> {

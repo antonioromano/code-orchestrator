@@ -17,7 +17,9 @@ import { TerminalPanel } from './TerminalPanel.js';
 import { SessionGroup } from './SessionGroup.js';
 import { GitDiffPanel } from './GitDiffPanel.js';
 import { useGitDiff } from '../hooks/useGitDiff.js';
-import { Tooltip, StatusDot } from './primitives/index.js';
+import { Tooltip } from './primitives/index.js';
+import { ErrorBoundary } from './ErrorBoundary.js';
+import { SessionSidebar } from './SessionSidebar.js';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -31,6 +33,7 @@ interface DashboardProps {
   socket: TypedSocket;
   theme: 'dark' | 'light';
   onDeleteSession: (id: string) => void;
+  onRestartSession: (id: string) => void;
   onCreateSession: () => void;
   onCloneSession: (folderPath: string, agentType?: string) => void;
   onReorder: (order: string[]) => void;
@@ -108,6 +111,7 @@ export function Dashboard({
   socket,
   theme,
   onDeleteSession,
+  onRestartSession,
   onCreateSession,
   onCloneSession,
   onReorder,
@@ -296,8 +300,9 @@ export function Dashboard({
             background: 'var(--color-bg-base)',
           }}
         >
-          {/* Focus header bar - simplified (no Exit Focus button, that's in the sidebar) */}
+          {/* Focus header bar — desktop only (hidden on mobile via CSS) */}
           <div
+            className="focus-header-desktop"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -365,43 +370,82 @@ export function Dashboard({
             </div>
           </div>
 
+          {/* Mobile focus header — visible only on mobile via CSS */}
+          <div
+            className="focus-header-mobile"
+            style={{
+              display: 'none',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 10px',
+              background: 'var(--color-bg-elevated)',
+              borderBottom: '1px solid var(--color-border-base)',
+              flexShrink: 0,
+            }}
+          >
+            <select
+              className="diff-session-select"
+              value={focusedSessionId ?? ''}
+              onChange={(e) => handleSwitchFocus(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-secondary)',
+                background: 'var(--color-bg-input)',
+                border: '1px solid var(--color-border-subtle)',
+                borderRadius: '4px',
+                padding: '1px 4px',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              {sessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} — {s.folderPath.split('/').slice(-2).join('/')}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => onCloneSession(focusedSession.folderPath, focusedSession.agentType)}
+              style={{ ...focusBarBtnStyle, padding: '4px 8px' }}
+              aria-label="New session in this folder"
+            >
+              <Plus size={13} strokeWidth={2} />
+            </button>
+            <button
+              onClick={() => onToggleDiff(focusedSession.id)}
+              style={{
+                ...focusBarBtnStyle,
+                padding: '4px 8px',
+                background: getDiffState(focusedSession.id).isOpen ? 'var(--color-accent)' : 'transparent',
+                color: getDiffState(focusedSession.id).isOpen ? '#ffffff' : 'var(--color-text-secondary)',
+                borderColor: getDiffState(focusedSession.id).isOpen ? 'transparent' : 'var(--color-border-subtle)',
+              }}
+              aria-label="Toggle diff view"
+            >
+              <GitBranch size={13} strokeWidth={1.75} />
+            </button>
+            <button
+              onClick={handleUnfocus}
+              style={{ ...focusBarBtnStyle, padding: '4px 8px', color: 'var(--color-text-muted)' }}
+              aria-label="Exit focus mode"
+            >
+              <X size={14} strokeWidth={1.75} />
+            </button>
+          </div>
+
           {/* Two-panel content area: sidebar + terminal/diff */}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
 
-            {/* Session sidebar */}
-            <div
-              style={{
-                width: '200px',
-                flexShrink: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                background: 'var(--color-bg-surface)',
-                borderRight: '1px solid var(--color-border-base)',
-                overflow: 'hidden',
-              }}
-            >
-              {/* Sidebar header */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 10px',
-                  borderBottom: '1px solid var(--color-border-base)',
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 600,
-                    color: 'var(--color-text-muted)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                  }}
-                >
-                  Sessions
-                </span>
+            {/* Session sidebar — hidden on mobile via CSS */}
+            <SessionSidebar
+              className="focus-sidebar"
+              sessions={sessions}
+              activeSessionId={focusedSessionId}
+              onSelectSession={handleSwitchFocus}
+              headerAction={
                 <button
                   onClick={handleUnfocus}
                   style={{
@@ -421,77 +465,8 @@ export function Dashboard({
                 >
                   <X size={14} strokeWidth={1.75} />
                 </button>
-              </div>
-
-              {/* Session list */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
-                {sessions.map((s) => {
-                  const isActive = s.id === focusedSessionId;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => handleSwitchFocus(s.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        width: '100%',
-                        padding: '6px 8px',
-                        border: 'none',
-                        borderLeft: isActive
-                          ? '2px solid var(--color-accent)'
-                          : '2px solid transparent',
-                        borderRadius: 'var(--radius-sm)',
-                        background: isActive
-                          ? 'var(--color-surface-bright, var(--color-bg-surface))'
-                          : 'transparent',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'background var(--transition-fast)',
-                        marginBottom: '2px',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isActive) e.currentTarget.style.background = 'var(--color-bg-elevated)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive) e.currentTarget.style.background = 'transparent';
-                      }}
-                    >
-                      <StatusDot status={s.status} size={6} />
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div
-                          style={{
-                            fontSize: 'var(--text-sm)',
-                            fontFamily: 'var(--font-mono)',
-                            fontWeight: isActive ? 600 : 400,
-                            color: isActive
-                              ? 'var(--color-text-primary)'
-                              : 'var(--color-text-secondary)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {s.name}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 'var(--text-xs)',
-                            color: 'var(--color-text-muted)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            fontFamily: 'var(--font-mono)',
-                          }}
-                        >
-                          {s.folderPath.split('/').slice(-2).join('/')}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+              }
+            />
 
             {/* Terminal + Diff area */}
             <div
@@ -518,14 +493,17 @@ export function Dashboard({
                     padding: 'var(--space-2)',
                   }}
                 >
-                  <TerminalPanel
-                    session={focusedSession}
-                    socket={socket}
-                    theme={theme}
-                    onDelete={onDeleteSession}
-                    onToggleDiff={onToggleDiff}
-                    isDiffOpen={getDiffState(focusedSession.id).isOpen}
-                  />
+                  <ErrorBoundary key={focusedSession.id} label={focusedSession.name}>
+                    <TerminalPanel
+                      session={focusedSession}
+                      socket={socket}
+                      theme={theme}
+                      onDelete={onDeleteSession}
+                      onRestart={onRestartSession}
+                      onToggleDiff={onToggleDiff}
+                      isDiffOpen={getDiffState(focusedSession.id).isOpen}
+                    />
+                  </ErrorBoundary>
                 </div>
               )}
               {getDiffState(focusedSession.id).isOpen && !getDiffState(focusedSession.id).isFullscreen && (
@@ -594,6 +572,7 @@ export function Dashboard({
                 socket={socket}
                 theme={theme}
                 onDeleteSession={onDeleteSession}
+                onRestartSession={onRestartSession}
                 onCloneSession={onCloneSession}
                 onFocusSession={onFocusSession}
                 onToggleDiff={onToggleDiff}

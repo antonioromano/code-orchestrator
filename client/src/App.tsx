@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTheme } from './context/ThemeContext.js';
 import { Styleguide } from './components/styleguide/Styleguide.js';
-import { useSocket, reconnectSocket } from './hooks/useSocket.js';
+import { useSocket, useSocketStatus, reconnectSocket } from './hooks/useSocket.js';
 import { useSessions } from './hooks/useSessions.js';
 import { useSessionOrder } from './hooks/useSessionOrder.js';
 import { useNgrok } from './hooks/useNgrok.js';
@@ -20,6 +20,8 @@ import { NavTabs } from './components/NavTabs.js';
 import type { AppTab } from './components/NavTabs.js';
 import { MobileBottomNav } from './components/MobileBottomNav.js';
 import { api, setToken } from './services/api.js';
+import { WifiOff } from 'lucide-react';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 
 interface DiffState {
   isOpen: boolean;
@@ -93,6 +95,12 @@ export default function App() {
   return <AppInner />;
 }
 
+const BUILTIN_AGENTS = [
+  { id: 'claude', name: 'Claude', command: 'claude', builtin: true as const },
+  { id: 'gemini', name: 'Gemini CLI', command: 'gemini', builtin: true as const },
+  { id: 'codex', name: 'Codex', command: 'codex', builtin: true as const },
+];
+
 function AppInner() {
   const { theme, isDark, toggle: toggleTheme } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -106,6 +114,7 @@ function AppInner() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('sessions');
   const socket = useSocket();
+  const socketConnected = useSocketStatus();
   const { sessions, createSession, deleteSession } = useSessions(socket);
   const ngrok = useNgrok(socket);
   const { config, updateConfig } = useConfig();
@@ -192,6 +201,10 @@ function AppInner() {
 
   const handleDelete = useCallback((id: string) => {
     setPendingDeleteId(id);
+  }, []);
+
+  const handleRestart = useCallback(async (id: string) => {
+    await api.restartSession(id);
   }, []);
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -390,6 +403,25 @@ function AppInner() {
         </div>
       </header>
 
+      {!socketConnected && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          padding: '6px 16px',
+          background: 'var(--color-warning-subtle, rgba(255,180,0,0.12))',
+          borderBottom: '1px solid var(--color-warning, #f0a500)',
+          color: 'var(--color-warning, #f0a500)',
+          fontSize: 'var(--text-sm)',
+          fontWeight: 500,
+          flexShrink: 0,
+        }}>
+          <WifiOff size={13} strokeWidth={2} />
+          Connection lost — reconnecting…
+        </div>
+      )}
+
       <NavTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -397,32 +429,37 @@ function AppInner() {
       />
 
       {activeTab === 'sessions' && (
-        <Dashboard
-          sessions={orderedSessions}
-          socket={socket}
-          theme={theme}
-          onDeleteSession={handleDelete}
-          onCreateSession={handleNewSession}
-          onCloneSession={handleClone}
-          onReorder={reorder}
-          focusedSessionId={focusedSessionId}
-          onFocusSession={handleFocus}
-          onUnfocusSession={handleUnfocus}
-          getDiffState={getDiffState}
-          onToggleDiff={handleToggleDiff}
-          onToggleDiffFullscreen={handleToggleDiffFullscreen}
-          onCloseDiff={handleCloseDiff}
-        />
+        <ErrorBoundary variant="tab" label="Sessions">
+          <Dashboard
+            sessions={orderedSessions}
+            socket={socket}
+            theme={theme}
+            onDeleteSession={handleDelete}
+            onRestartSession={handleRestart}
+            onCreateSession={handleNewSession}
+            onCloneSession={handleClone}
+            onReorder={reorder}
+            focusedSessionId={focusedSessionId}
+            onFocusSession={handleFocus}
+            onUnfocusSession={handleUnfocus}
+            getDiffState={getDiffState}
+            onToggleDiff={handleToggleDiff}
+            onToggleDiffFullscreen={handleToggleDiffFullscreen}
+            onCloseDiff={handleCloseDiff}
+          />
+        </ErrorBoundary>
       )}
       {activeTab === 'git-diff' && sessions.length > 0 && (
-        <GlobalGitDiffView
-          sessionId={focusedSessionId ?? sessions[0].id}
-          sessionStatus={sessions.find(s => s.id === (focusedSessionId ?? sessions[0].id))?.status ?? 'idle'}
-          theme={theme}
-          sessions={sessions}
-          currentSessionId={focusedSessionId ?? sessions[0].id}
-          onSelectSession={setFocusedSessionId}
-        />
+        <ErrorBoundary variant="tab" label="Git Diff">
+          <GlobalGitDiffView
+            sessionId={focusedSessionId ?? sessions[0].id}
+            sessionStatus={sessions.find(s => s.id === (focusedSessionId ?? sessions[0].id))?.status ?? 'idle'}
+            theme={theme}
+            sessions={sessions}
+            currentSessionId={focusedSessionId ?? sessions[0].id}
+            onSelectSession={setFocusedSessionId}
+          />
+        </ErrorBoundary>
       )}
       {activeTab === 'git-diff' && sessions.length === 0 && (
         <div style={{
@@ -437,7 +474,9 @@ function AppInner() {
         </div>
       )}
       {activeTab === 'explorer' && (
-        <ExplorerPanel sessions={orderedSessions} theme={theme} />
+        <ErrorBoundary variant="tab" label="Explorer">
+          <ExplorerPanel sessions={orderedSessions} theme={theme} />
+        </ErrorBoundary>
       )}
 
       {showCreateModal && (
@@ -450,7 +489,7 @@ function AppInner() {
           theme={theme}
           initialFolderPath={pickedFolder}
           defaultAgentType={config?.defaultAgent}
-          agents={config ? [...[{ id: 'claude', name: 'Claude', command: 'claude', builtin: true }, { id: 'gemini', name: 'Gemini CLI', command: 'gemini', builtin: true }, { id: 'codex', name: 'Codex', command: 'codex', builtin: true }], ...config.customAgents] : []}
+          agents={config ? [...BUILTIN_AGENTS, ...config.customAgents] : []}
         />
       )}
 
@@ -459,7 +498,7 @@ function AppInner() {
           folderPath={cloneModalState.folderPath}
           currentAgentType={cloneModalState.agentType}
           defaultAgentType={config?.defaultAgent}
-          agents={config ? [...[{ id: 'claude', name: 'Claude', command: 'claude', builtin: true }, { id: 'gemini', name: 'Gemini CLI', command: 'gemini', builtin: true }, { id: 'codex', name: 'Codex', command: 'codex', builtin: true }], ...config.customAgents] : []}
+          agents={config ? [...BUILTIN_AGENTS, ...config.customAgents] : []}
           theme={theme}
           onClone={handleCloneConfirm}
           onClose={() => setCloneModalState(null)}

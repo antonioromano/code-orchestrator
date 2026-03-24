@@ -3,7 +3,7 @@ import parseDiff from 'parse-diff';
 import type { GitDiffResponse, SessionInfo } from '@remote-orchestrator/shared';
 import { DiffHunk } from './DiffHunk.js';
 import { DiffFileSection } from './DiffFileSection.js';
-import { StatusDot } from './primitives/StatusDot.js';
+import { SessionSidebar } from './SessionSidebar.js';
 
 const MAX_LINES_BEFORE_TRUNCATE = 500;
 const NARROW_BREAKPOINT = 520;
@@ -386,82 +386,11 @@ export function GitDiffPanel({
         /* Wide layout: session sidebar | file list | content */
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
           {/* Session sidebar (200px) */}
-          <div style={{
-            width: '200px',
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            background: 'var(--color-bg-surface)',
-            borderRight: '1px solid var(--color-border-base)',
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '8px 10px',
-              borderBottom: '1px solid var(--color-border-base)',
-              flexShrink: 0,
-            }}>
-              <span style={{
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                color: 'var(--color-text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}>Sessions</span>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
-              {(sessions ?? []).map((s) => {
-                const isActive = s.id === currentSessionId;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => onSelectSession(s.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      width: '100%',
-                      padding: '6px 8px',
-                      border: 'none',
-                      borderLeft: isActive ? '2px solid var(--color-accent)' : '2px solid transparent',
-                      borderRadius: 'var(--radius-sm)',
-                      background: isActive ? 'var(--color-surface-bright, var(--color-bg-surface))' : 'transparent',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'background var(--transition-fast)',
-                      marginBottom: '2px',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) e.currentTarget.style.background = 'var(--color-bg-elevated)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    <StatusDot status={s.status} size={6} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{
-                        fontSize: 'var(--text-sm)',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: isActive ? 600 : 400,
-                        color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>{s.name}</div>
-                      <div style={{
-                        fontSize: 'var(--text-xs)',
-                        color: 'var(--color-text-muted)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        fontFamily: 'var(--font-mono)',
-                      }}>{s.folderPath.split('/').slice(-2).join('/')}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <SessionSidebar
+            sessions={sessions ?? []}
+            activeSessionId={currentSessionId}
+            onSelectSession={onSelectSession}
+          />
 
           {/* File list sidebar */}
           <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border-base)', background: 'var(--color-bg-surface)', overflow: 'hidden' }}>

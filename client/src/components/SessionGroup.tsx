@@ -8,6 +8,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Plus, GripVertical } from 'lucide-react';
 import { TerminalPanel } from './TerminalPanel.js';
 import { Tooltip } from './primitives/index.js';
+import { ErrorBoundary } from './ErrorBoundary.js';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -17,6 +18,7 @@ interface SessionGroupProps {
   socket: TypedSocket;
   theme: 'dark' | 'light';
   onDeleteSession: (id: string) => void;
+  onRestartSession: (id: string) => void;
   onCloneSession: (folderPath: string, agentType?: string) => void;
   onFocusSession?: (id: string) => void;
   onToggleDiff?: (id: string) => void;
@@ -29,6 +31,7 @@ export function SessionGroup({
   socket,
   theme,
   onDeleteSession,
+  onRestartSession,
   onCloneSession,
   onFocusSession,
   onToggleDiff,
@@ -163,15 +166,17 @@ export function SessionGroup({
           }}
         >
           {sessions.filter((s) => s.id !== focusedSessionId).map((session) => (
-            <TerminalPanel
-              key={session.id}
-              session={session}
-              socket={socket}
-              theme={theme}
-              onDelete={onDeleteSession}
-              onFocus={onFocusSession}
-              onToggleDiff={onToggleDiff}
-            />
+            <ErrorBoundary key={session.id} label={session.name}>
+              <TerminalPanel
+                session={session}
+                socket={socket}
+                theme={theme}
+                onDelete={onDeleteSession}
+                onRestart={onRestartSession}
+                onFocus={onFocusSession}
+                onToggleDiff={onToggleDiff}
+              />
+            </ErrorBoundary>
           ))}
         </div>
       </SortableContext>

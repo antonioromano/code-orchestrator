@@ -31,9 +31,29 @@ body {
   background: var(--color-surface-bright);
 }
 
+/* xterm.js viewport scrollbar — more visible than the global 5px default */
+.xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.5);
+  border-radius: 4px;
+}
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.8);
+}
+
 /* Mobile bottom nav — hidden on desktop */
 .mobile-bottom-nav {
   display: flex;
+}
+
+/* Mobile terminal input bar — hidden on desktop */
+.mobile-terminal-input {
+  display: none;
 }
 
 @media (min-width: 768px) {
@@ -65,10 +85,109 @@ body {
     overflow: visible !important;
     grid-auto-rows: auto !important;
   }
-  /* Give each terminal a fixed height so xterm renders properly */
+  /* Give each terminal a fixed height so xterm renders properly.
+     440px = ~340px terminal + ~100px for the mobile input bar */
   .terminal-panel {
-    min-height: 340px !important;
+    min-height: 440px !important;
     flex: none !important;
+    /* Disable browser native touch scroll so our custom handlers take over */
+    touch-action: none;
+  }
+
+  /* Mobile terminal input toolbar */
+  .mobile-terminal-input {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 8px;
+    background: var(--color-bg-elevated);
+    border-top: 1px solid var(--color-border-base);
+    flex-shrink: 0;
+  }
+
+  .mobile-terminal-quickkeys {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .mobile-quickkey-btn {
+    flex-shrink: 0;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 6px;
+    border: 1px solid var(--color-border-base);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-quickkey-btn:active {
+    background: var(--color-accent-subtle);
+    border-color: var(--color-accent);
+  }
+
+  .mobile-terminal-textrow {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .mobile-terminal-text-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 16px !important;
+    font-family: var(--font-mono);
+    padding: 8px 12px;
+    min-height: 44px;
+    border: 1px solid var(--color-border-base);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    outline: none;
+    box-sizing: border-box;
+  }
+
+  .mobile-terminal-send-btn {
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 0 16px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-terminal-send-btn:active {
+    opacity: 0.8;
+  }
+
+  /* Focus mode: hide desktop sidebar and header, show mobile dropdown header */
+  .focus-sidebar {
+    display: none !important;
+  }
+
+  .focus-header-desktop {
+    display: none !important;
+  }
+
+  .focus-header-mobile {
+    display: flex !important;
   }
 
   /* Search inputs: prevent iOS auto-zoom (font-size must be >= 16px) */

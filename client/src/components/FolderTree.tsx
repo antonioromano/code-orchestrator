@@ -4,7 +4,7 @@ import { api } from '../services/api.js';
 
 interface FolderTreeProps {
   onSelect: (path: string) => void;
-  theme: 'dark' | 'light';
+  theme?: 'dark' | 'light';
 }
 
 interface TreeNode {
@@ -12,12 +12,11 @@ interface TreeNode {
   loading: boolean;
 }
 
-export function FolderTree({ onSelect, theme }: FolderTreeProps) {
+export function FolderTree({ onSelect }: FolderTreeProps) {
   const [treeData, setTreeData] = useState<Map<string, TreeNode>>(new Map());
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [rootPath, setRootPath] = useState<string>('');
-  const isDark = theme === 'dark';
 
   // Load root on mount
   useEffect(() => {
@@ -80,15 +79,15 @@ export function FolderTree({ onSelect, theme }: FolderTreeProps) {
       style={{
         maxHeight: '300px',
         overflowY: 'auto',
-        border: `1px solid ${isDark ? '#3b4261' : '#c0c0c0'}`,
+        border: '1px solid var(--color-border-base)',
         borderRadius: '6px',
-        background: isDark ? '#1a1b26' : '#ffffff',
+        background: 'var(--color-bg-surface)',
       }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => e.preventDefault()}
     >
       {rows.length === 0 && (
-        <div style={{ padding: '12px', fontSize: '13px', color: isDark ? '#565f89' : '#8b8fa3' }}>
+        <div style={{ padding: '12px', fontSize: '13px', color: 'var(--color-text-muted)' }}>
           Loading...
         </div>
       )}
@@ -106,12 +105,10 @@ export function FolderTree({ onSelect, theme }: FolderTreeProps) {
               padding: '4px 8px',
               paddingLeft: `${8 + depth * 20}px`,
               cursor: 'pointer',
-              background: isSelected
-                ? (isDark ? '#283457' : '#e3e8f0')
-                : 'transparent',
+              background: isSelected ? 'var(--color-bg-elevated)' : 'transparent',
               fontSize: '13px',
               fontFamily: 'Menlo, Monaco, monospace',
-              color: isDark ? '#c0caf5' : '#343b58',
+              color: 'var(--color-text-primary)',
             }}
             onClick={() => handleSelect(entry.path)}
           >
@@ -125,7 +122,7 @@ export function FolderTree({ onSelect, theme }: FolderTreeProps) {
                 flexShrink: 0,
                 textAlign: 'center',
                 fontSize: '10px',
-                color: isDark ? '#565f89' : '#8b8fa3',
+                color: 'var(--color-text-muted)',
                 cursor: entry.hasChildren ? 'pointer' : 'default',
               }}
             >

@@ -45,7 +45,7 @@ export class SessionManager {
     this.io = io;
   }
 
-  async createSession(folderPath: string, name?: string, agentType?: string): Promise<SessionInfo> {
+  async createSession(folderPath: string, name?: string, agentType?: string, existingId?: string, existingCreatedAt?: string): Promise<SessionInfo> {
     // Validate folder exists
     await access(folderPath);
 
@@ -57,9 +57,9 @@ export class SessionManager {
     const agentDef = this.agentRegistry.getById(resolvedAgentType, config.customAgents);
     const command = agentDef?.command ?? resolvedAgentType;
 
-    const id = uuidv4();
+    const id = existingId ?? uuidv4();
     const sessionName = name || path.basename(folderPath);
-    const createdAt = new Date().toISOString();
+    const createdAt = existingCreatedAt ?? new Date().toISOString();
 
     const stateDetector = new StateDetector((status) => {
       const session = this.sessions.get(id);
@@ -119,6 +119,56 @@ export class SessionManager {
     this.io?.emit('session:deleted', { sessionId: id });
   }
 
+  async restartSession(id: string): Promise<SessionInfo> {
+    const session = this.sessions.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+
+    // Tear down old pty
+    session.stateDetector.destroy();
+    this.ptyManager.kill(session.pty);
+
+    // Reset state
+    session.outputBuffer = '';
+    session.status = 'running';
+
+    // Resolve agent command
+    const config = await this.configStore.load();
+    const agentDef = this.agentRegistry.getById(session.agentType, config.customAgents);
+    const command = agentDef?.command ?? session.agentType;
+
+    // New state detector wired to same id
+    const stateDetector = new StateDetector((status) => {
+      const s = this.sessions.get(id);
+      if (s) {
+        s.status = status;
+        this.io?.to(id).emit('session:status', { sessionId: id, status });
+      }
+    }, session.agentType);
+
+    // Spawn fresh pty
+    const ptyProcess = this.ptyManager.spawn(session.folderPath, command);
+
+    ptyProcess.onData((data) => {
+      session.outputBuffer += data;
+      if (session.outputBuffer.length > 100_000) {
+        session.outputBuffer = session.outputBuffer.slice(-100_000);
+      }
+      stateDetector.feed(data);
+      this.io?.to(id).emit('session:output', { sessionId: id, data });
+    });
+
+    ptyProcess.onExit(({ exitCode }) => {
+      stateDetector.setExited();
+      this.io?.to(id).emit('session:exit', { sessionId: id, exitCode });
+    });
+
+    session.pty = ptyProcess;
+    session.stateDetector = stateDetector;
+
+    this.io?.to(id).emit('session:status', { sessionId: id, status: 'running' });
+    return this.toSessionInfo(session);
+  }
+
   getSession(id: string): ManagedSession | undefined {
     return this.sessions.get(id);
   }
@@ -154,10 +204,15 @@ export class SessionManager {
     for (const p of persisted) {
       try {
         await access(p.folderPath);
-        await this.createSession(p.folderPath, p.name, p.agentType);
-        console.log(`Restored session: ${p.name} (${p.folderPath}) [${p.agentType}]`);
       } catch {
-        console.warn(`Skipping session ${p.name}: folder ${p.folderPath} not accessible`);
+        console.warn(`Skipping session "${p.name}": folder not accessible (${p.folderPath})`);
+        continue;
+      }
+      try {
+        await this.createSession(p.folderPath, p.name, p.agentType, p.id, p.createdAt);
+        console.log(`Restored session: ${p.name} (${p.folderPath}) [${p.agentType}]`);
+      } catch (err) {
+        console.error(`Failed to restore session "${p.name}":`, err);
       }
     }
   }
@@ -171,6 +226,18 @@ export class SessionManager {
       createdAt: session.createdAt,
       agentType: session.agentType,
     };
+  }
+
+  async shutdown(): Promise<void> {
+    for (const session of this.sessions.values()) {
+      try {
+        session.stateDetector.destroy();
+        this.ptyManager.kill(session.pty);
+      } catch {
+        // pty may already be dead — continue to next session
+      }
+    }
+    await this.persistSessions();
   }
 
   private async persistSessions(): Promise<void> {

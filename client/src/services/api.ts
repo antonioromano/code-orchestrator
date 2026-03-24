@@ -53,6 +53,15 @@ export const api = {
     await authFetch(`${API_BASE}/sessions/${id}`, { method: 'DELETE' });
   },
 
+  restartSession: async (id: string): Promise<SessionInfo> => {
+    const res = await authFetch(`${API_BASE}/sessions/${id}/restart`, { method: 'PATCH' });
+    if (!res.ok) {
+      const err = await res.json() as { error?: string };
+      throw new Error(err.error || 'Failed to restart session');
+    }
+    return res.json();
+  },
+
   getPathCompletions: async (path: string): Promise<string[]> => {
     const res = await authFetch(`${API_BASE}/fs/autocomplete?path=${encodeURIComponent(path)}`);
     const data: PathCompletionResponse = await res.json();

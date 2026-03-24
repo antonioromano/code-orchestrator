@@ -51,6 +51,16 @@ export function createSessionRoutes(manager: SessionManager, orderStore: OrderSt
     }
   });
 
+  router.patch('/:id/restart', async (req, res) => {
+    try {
+      const session = await manager.restartSession(req.params.id);
+      res.json(session);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to restart session';
+      res.status(404).json({ error: message });
+    }
+  });
+
   router.delete('/:id', async (req, res) => {
     try {
       await manager.destroySession(req.params.id);

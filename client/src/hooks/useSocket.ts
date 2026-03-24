@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { getToken } from '../services/api.js';
@@ -37,4 +37,22 @@ export function useSocket(): TypedSocket {
   }, []);
 
   return socketRef.current;
+}
+
+export function useSocketStatus(): boolean {
+  const socket = getSocket();
+  const [connected, setConnected] = useState(socket.connected);
+
+  useEffect(() => {
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, [socket]);
+
+  return connected;
 }

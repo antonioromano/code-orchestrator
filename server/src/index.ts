@@ -85,6 +85,7 @@ async function start() {
 start().catch(console.error);
 
 const shutdown = async () => {
+  await sessionManager.shutdown();
   await ngrokService.stop();
   process.exit(0);
 };

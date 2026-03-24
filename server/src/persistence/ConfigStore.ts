@@ -1,6 +1,6 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { readFile } from 'fs/promises';
 import type { AppConfig } from '@remote-orchestrator/shared';
+import { atomicWrite } from '../utils/atomicWrite.js';
 
 const DEFAULT_CONFIG: AppConfig = {
   defaultAgent: 'claude',
@@ -15,8 +15,7 @@ export class ConfigStore {
   }
 
   async save(config: AppConfig): Promise<void> {
-    await mkdir(path.dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(config, null, 2), 'utf-8');
+    await atomicWrite(this.filePath, JSON.stringify(config, null, 2));
   }
 
   async load(): Promise<AppConfig> {

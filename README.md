@@ -5,7 +5,7 @@ A web-based dashboard for managing multiple AI coding agent sessions simultaneou
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/remote-orchestrator.git
+git clone https://github.com/antonioromano/code-orchestrator.git
 cd remote-orchestrator
 ./setup.sh
 ```
@@ -72,7 +72,7 @@ Removes the `swarm` symlink. Optionally removes `node_modules/`. Project files a
 
 ### Terminal
 
-- **xterm.js with WebGL renderer** — Smooth, high-performance terminal in the browser
+- **xterm.js terminal** — Smooth, high-performance terminal in the browser
 - **Live two-way I/O** — All keyboard input and terminal output streams via Socket.io in real time
 - **Reconnect replay** — A 100KB rolling buffer per session replays output when you reconnect or reload
 - **Full terminal features** — Clickable links, copy-paste, and responsive resizing
@@ -111,7 +111,6 @@ Removes the `swarm` symlink. Optionally removes `node_modules/`. Project files a
 | Key | Action |
 |-----|--------|
 | `Escape` | Exit diff fullscreen → close diff panel → exit focus mode (priority order) |
-| `F` | Toggle browser fullscreen (ignored when typing in terminal or input fields) |
 
 ## Development
 
@@ -171,5 +170,5 @@ remote-orchestrator/
 ## Tech Stack
 
 - **Server:** Express, Socket.io, node-pty, TypeScript (ESM)
-- **Client:** React 19, xterm.js (WebGL), Socket.io-client, @dnd-kit, Vite
+- **Client:** React 19, xterm.js, Socket.io-client, @dnd-kit, Vite
 - **Shared:** TypeScript types for session models, REST shapes, and Socket.io event maps

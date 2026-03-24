@@ -1,10 +1,10 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { SessionInfo } from '@remote-orchestrator/shared';
 import type { Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Maximize2, GitCompare, X, GripVertical } from 'lucide-react';
+import { Maximize2, GitCompare, X, GripVertical, RotateCcw } from 'lucide-react';
 import { useTerminal } from '../hooks/useTerminal.js';
 import { StatusDot } from './primitives/index.js';
 import { Badge } from './primitives/index.js';
@@ -18,14 +18,40 @@ interface TerminalPanelProps {
   socket: TypedSocket;
   theme: 'dark' | 'light';
   onDelete: (id: string) => void;
+  onRestart?: (id: string) => void;
   onFocus?: (id: string) => void;
   onToggleDiff?: (id: string) => void;
   isDiffOpen?: boolean;
 }
 
-export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onToggleDiff, isDiffOpen }: TerminalPanelProps) {
+const QUICK_ACTIONS = [
+  { label: '↑', data: '\x1b[A', title: 'Arrow up' },
+  { label: '↓', data: '\x1b[B', title: 'Arrow down' },
+  { label: '↵', data: '\r', title: 'Enter' },
+  { label: 'y', data: 'y\r', title: 'Yes' },
+  { label: 'n', data: 'n\r', title: 'No' },
+  { label: '^C', data: '\x03', title: 'Ctrl+C (interrupt)' },
+  { label: '1', data: '1\r', title: 'Option 1' },
+  { label: '2', data: '2\r', title: 'Option 2' },
+  { label: '3', data: '3\r', title: 'Option 3' },
+  { label: '4', data: '4\r', title: 'Option 4' },
+  { label: '5', data: '5\r', title: 'Option 5' },
+  { label: 'Esc', data: '\x1b', title: 'Escape' },
+  { label: 'Tab', data: '\t', title: 'Tab' },
+];
+
+export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onFocus, onToggleDiff, isDiffOpen }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   useTerminal(containerRef, { sessionId: session.id, socket, theme });
+
+  const [mobileInput, setMobileInput] = useState('');
+
+  const handleMobileSend = () => {
+    const text = mobileInput.trim();
+    if (!text) return;
+    socket.emit('session:input', { sessionId: session.id, data: text + '\r' });
+    setMobileInput('');
+  };
 
   const {
     attributes: dragAttributes,
@@ -185,6 +211,26 @@ export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onTog
             </Tooltip>
           )}
 
+          {onRestart && session.status === 'exited' && (
+            <Tooltip content="Restart session" position="top">
+              <button
+                onClick={() => onRestart(session.id)}
+                style={iconBtnStyle}
+                aria-label="Restart session"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--color-success-subtle, rgba(0,200,100,0.12))';
+                  e.currentTarget.style.color = 'var(--color-success)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--color-text-muted)';
+                }}
+              >
+                <RotateCcw size={14} strokeWidth={1.75} />
+              </button>
+            </Tooltip>
+          )}
+
           <Tooltip content="Close session" position="top">
             <button
               onClick={() => onDelete(session.id)}
@@ -214,6 +260,44 @@ export function TerminalPanel({ session, socket, theme, onDelete, onFocus, onTog
           background: 'var(--color-bg-deepest)',
         }}
       />
+
+      {/* Mobile input toolbar — hidden on desktop via CSS */}
+      <div className="mobile-terminal-input">
+        <div className="mobile-terminal-quickkeys">
+          {QUICK_ACTIONS.map((action) => (
+            <button
+              key={action.label}
+              className="mobile-quickkey-btn"
+              title={action.title}
+              onClick={() => socket.emit('session:input', { sessionId: session.id, data: action.data })}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+        <div className="mobile-terminal-textrow">
+          <input
+            className="mobile-terminal-text-input"
+            type="text"
+            placeholder="Type command..."
+            value={mobileInput}
+            onChange={(e) => setMobileInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleMobileSend();
+              }
+            }}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+          />
+          <button className="mobile-terminal-send-btn" onClick={handleMobileSend}>
+            Send
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

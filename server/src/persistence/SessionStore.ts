@@ -1,5 +1,6 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import path from 'path';
+import { atomicWrite } from '../utils/atomicWrite.js';
 
 export interface PersistedSession {
   id: string;
@@ -17,8 +18,7 @@ export class SessionStore {
   }
 
   async save(sessions: PersistedSession[]): Promise<void> {
-    await mkdir(path.dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(sessions, null, 2), 'utf-8');
+    await atomicWrite(this.filePath, JSON.stringify(sessions, null, 2));
   }
 
   async load(): Promise<PersistedSession[]> {

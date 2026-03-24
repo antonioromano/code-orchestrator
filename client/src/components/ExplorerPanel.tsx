@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link } from 'lucide-react';
 import type { SessionInfo, FileContentResponse, FileSearchResult } from '@remote-orchestrator/shared';
-import { StatusDot } from './primitives/StatusDot.js';
 import { ExplorerFolderTree } from './ExplorerFolderTree.js';
+import { SessionSidebar } from './SessionSidebar.js';
 import { Tooltip } from './primitives/Tooltip.js';
 import { api } from '../services/api.js';
 
@@ -645,88 +645,11 @@ export function ExplorerPanel({ sessions }: ExplorerPanelProps) {
         /* Wide layout: session sidebar | file tree + search | file preview */
         <>
           {/* Left: Session sidebar (200px) */}
-          <div style={{
-            width: '200px',
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            background: 'var(--color-bg-surface)',
-            borderRight: '1px solid var(--color-border-base)',
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '8px 10px',
-              borderBottom: '1px solid var(--color-border-base)',
-              flexShrink: 0,
-            }}>
-              <span style={{
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                color: 'var(--color-text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}>
-                Sessions
-              </span>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
-              {sessions.map((s) => {
-                const isActive = s.id === selectedSessionId;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => handleSessionSelect(s.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      width: '100%',
-                      padding: '6px 8px',
-                      border: 'none',
-                      borderLeft: isActive ? '2px solid var(--color-accent)' : '2px solid transparent',
-                      borderRadius: 'var(--radius-sm)',
-                      background: isActive ? 'var(--color-surface-bright, var(--color-bg-surface))' : 'transparent',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'background var(--transition-fast)',
-                      marginBottom: '2px',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) e.currentTarget.style.background = 'var(--color-bg-elevated)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    <StatusDot status={s.status} size={6} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{
-                        fontSize: 'var(--text-sm)',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: isActive ? 600 : 400,
-                        color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {s.name}
-                      </div>
-                      <div style={{
-                        fontSize: 'var(--text-xs)',
-                        color: 'var(--color-text-muted)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        fontFamily: 'var(--font-mono)',
-                      }}>
-                        {s.folderPath.split('/').slice(-2).join('/')}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <SessionSidebar
+            sessions={sessions}
+            activeSessionId={selectedSessionId}
+            onSelectSession={handleSessionSelect}
+          />
 
           {/* Middle: File tree with search (260px) */}
           <div style={{
@@ -821,8 +744,8 @@ export function ExplorerPanel({ sessions }: ExplorerPanelProps) {
           bottom: '24px',
           left: '50%',
           transform: 'translateX(-50%)',
-          background: '#d4f5e2',
-          border: '1px solid #48c774',
+          background: 'var(--color-bg-success, #d4f5e2)',
+          border: '1px solid var(--color-border-success, #48c774)',
           borderRadius: 'var(--radius-md)',
           padding: '7px 14px',
           fontSize: 'var(--text-sm)',
@@ -836,8 +759,8 @@ export function ExplorerPanel({ sessions }: ExplorerPanelProps) {
           alignItems: 'center',
           gap: '6px',
         }}>
-          <Check size={13} strokeWidth={2.5} style={{ color: '#1a7a40', flexShrink: 0 }} />
-          <span style={{ color: '#1a7a40' }}>{toastMessage}</span>
+          <Check size={13} strokeWidth={2.5} style={{ color: 'var(--color-text-success, #1a7a40)', flexShrink: 0 }} />
+          <span style={{ color: 'var(--color-text-success, #1a7a40)' }}>{toastMessage}</span>
         </div>
       )}
     </div>

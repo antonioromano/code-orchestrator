@@ -5,6 +5,23 @@ import type { AuthService } from '../services/AuthService.js';
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
+// sessionId -> socketId -> { cols, rows }
+// Tracks each connected client's terminal dimensions so the PTY is sized to
+// the largest client rather than the most-recently-resized one.
+const clientDimensions = new Map<string, Map<string, { cols: number; rows: number }>>();
+
+function getMaxDimensions(sessionId: string): { cols: number; rows: number } | null {
+  const sockets = clientDimensions.get(sessionId);
+  if (!sockets || sockets.size === 0) return null;
+  let maxCols = 0;
+  let maxRows = 0;
+  for (const { cols, rows } of sockets.values()) {
+    if (cols > maxCols) maxCols = cols;
+    if (rows > maxRows) maxRows = rows;
+  }
+  return maxCols > 0 && maxRows > 0 ? { cols: maxCols, rows: maxRows } : null;
+}
+
 export function setupSocketHandler(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   manager: SessionManager,
@@ -28,6 +45,10 @@ export function setupSocketHandler(
 
     socket.on('session:join', (sessionId: string) => {
       socket.join(sessionId);
+      // Register this socket for dimension tracking
+      if (!clientDimensions.has(sessionId)) {
+        clientDimensions.set(sessionId, new Map());
+      }
       // Replay buffered output so terminal isn't blank after reconnect
       const buffer = manager.getSessionBuffer(sessionId);
       if (buffer) {
@@ -37,6 +58,15 @@ export function setupSocketHandler(
 
     socket.on('session:leave', (sessionId: string) => {
       socket.leave(sessionId);
+      // Remove this socket's dimensions and resize PTY to remaining max
+      const sockets = clientDimensions.get(sessionId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        const max = getMaxDimensions(sessionId);
+        if (max) {
+          try { manager.resizeSession(sessionId, max.cols, max.rows); } catch { /* session may be gone */ }
+        }
+      }
       console.log(`Client ${socket.id} left session ${sessionId}`);
     });
 
@@ -50,7 +80,14 @@ export function setupSocketHandler(
 
     socket.on('session:resize', ({ sessionId, cols, rows }) => {
       try {
-        manager.resizeSession(sessionId, cols, rows);
+        // Store this client's dimensions
+        const sockets = clientDimensions.get(sessionId);
+        if (sockets) {
+          sockets.set(socket.id, { cols, rows });
+        }
+        // Resize PTY to the maximum dimensions across all connected clients
+        const max = getMaxDimensions(sessionId) ?? { cols, rows };
+        manager.resizeSession(sessionId, max.cols, max.rows);
       } catch (err) {
         console.error(`Error resizing session ${sessionId}:`, err);
       }
@@ -58,6 +95,16 @@ export function setupSocketHandler(
 
     socket.on('disconnect', () => {
       console.log(`Client disconnected: ${socket.id}`);
+      // Clean up dimensions for all sessions this socket was part of
+      for (const [sessionId, sockets] of clientDimensions) {
+        if (sockets.has(socket.id)) {
+          sockets.delete(socket.id);
+          const max = getMaxDimensions(sessionId);
+          if (max) {
+            try { manager.resizeSession(sessionId, max.cols, max.rows); } catch { /* session may be gone */ }
+          }
+        }
+      }
     });
   });
 }
