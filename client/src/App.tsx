@@ -255,10 +255,12 @@ export default function App() {
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          {/* Settings */}
-          <HeaderButton onClick={() => setShowSettingsModal(true)} title="Settings">
-            {'\u2699'}
-          </HeaderButton>
+          {/* Settings — hidden on mobile (moved to bottom nav) */}
+          <span className="header-settings-btn">
+            <HeaderButton onClick={() => setShowSettingsModal(true)} title="Settings">
+              {'\u2699'}
+            </HeaderButton>
+          </span>
 
           {/* Fullscreen */}
           <HeaderButton onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
@@ -491,6 +493,7 @@ export default function App() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onNewSession={handleNewSession}
+        onSettings={() => setShowSettingsModal(true)}
       />
     </>
   );
@@ -532,6 +535,7 @@ function GlobalGitDiffView({
         onClose={() => {}}
         onToggleFullscreen={() => {}}
         onRefresh={refresh}
+        showHeaderControls={false}
       />
     </div>
   );

@@ -3,6 +3,7 @@ import parseDiff from 'parse-diff';
 import type { GitDiffResponse, SessionInfo } from '@remote-orchestrator/shared';
 import { DiffHunk } from './DiffHunk.js';
 import { DiffFileSection } from './DiffFileSection.js';
+import { StatusDot } from './primitives/StatusDot.js';
 
 const MAX_LINES_BEFORE_TRUNCATE = 500;
 const NARROW_BREAKPOINT = 520;
@@ -19,6 +20,7 @@ interface GitDiffPanelProps {
   onClose: () => void;
   onToggleFullscreen: () => void;
   onRefresh: () => void;
+  showHeaderControls?: boolean;
 }
 
 type FileCategory = 'unstaged' | 'staged' | 'branch';
@@ -41,6 +43,7 @@ export function GitDiffPanel({
   onClose,
   onToggleFullscreen,
   onRefresh,
+  showHeaderControls = true,
 }: GitDiffPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isNarrow, setIsNarrow] = useState(false);
@@ -201,7 +204,7 @@ export function GitDiffPanel({
   };
 
   const searchInput = (
-    <div style={{ padding: '4px 8px 6px', borderBottom: '1px solid var(--color-border-base)', flexShrink: 0 }}>
+    <div style={{ padding: '4px 8px 6px', borderBottom: '1px solid var(--color-border-base)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
       <input
         className="diff-search-input"
         type="text"
@@ -210,7 +213,7 @@ export function GitDiffPanel({
         onChange={e => setSearchQuery(e.target.value)}
         onClick={e => e.stopPropagation()}
         style={{
-          width: '100%',
+          flex: 1,
           boxSizing: 'border-box',
           fontSize: '12px',
           padding: '3px 8px',
@@ -221,6 +224,9 @@ export function GitDiffPanel({
           outline: 'none',
         }}
       />
+      <button onClick={onRefresh} style={{ ...headerBtnStyle, opacity: isLoading ? 0.5 : 1, flexShrink: 0 }} title="Refresh diff">
+        {'\u21BB'}
+      </button>
     </div>
   );
 
@@ -277,52 +283,55 @@ export function GitDiffPanel({
               </span>
             )}
           </div>
-          <select
-            className="diff-session-select"
-            value={currentSessionId}
-            onChange={e => onSelectSession(e.target.value)}
-            style={{
-              fontSize: '11px',
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--color-text-secondary)',
-              background: 'var(--color-bg-input)',
-              border: '1px solid var(--color-border-subtle)',
-              borderRadius: '4px',
-              padding: '1px 4px',
-              cursor: 'pointer',
-              maxWidth: '200px',
-              outline: 'none',
-            }}
-          >
-            {(sessions ?? []).map(s => (
-              <option key={s.id} value={s.id}>
-                {s.name} — {s.folderPath.split('/').slice(-2).join('/')}
-              </option>
-            ))}
-          </select>
+          {isNarrow && (
+            <select
+              className="diff-session-select"
+              value={currentSessionId}
+              onChange={e => onSelectSession(e.target.value)}
+              style={{
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-secondary)',
+                background: 'var(--color-bg-input)',
+                border: '1px solid var(--color-border-subtle)',
+                borderRadius: '4px',
+                padding: '1px 4px',
+                cursor: 'pointer',
+                maxWidth: '200px',
+                outline: 'none',
+              }}
+            >
+              {(sessions ?? []).map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} — {s.folderPath.split('/').slice(-2).join('/')}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-          <button onClick={onRefresh} style={{ ...headerBtnStyle, opacity: isLoading ? 0.5 : 1 }} title="Refresh diff">
-            {'\u21BB'}
-          </button>
           {isNarrow && totalFiles > 0 && !error && (
             <button onClick={() => setCollapseAllKey(k => k + 1)} style={headerBtnStyle} title="Collapse all">
               {'\u2261'}
             </button>
           )}
-          <button onClick={onToggleFullscreen} style={headerBtnStyle} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
-            {isFullscreen ? '\u2923' : '\u2922'}
-          </button>
-          <button onClick={onClose} style={headerBtnStyle} title="Close diff">
-            {'\u2715'}
-          </button>
+          {showHeaderControls && (
+            <>
+              <button onClick={onToggleFullscreen} style={headerBtnStyle} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+                {isFullscreen ? '\u2923' : '\u2922'}
+              </button>
+              <button onClick={onClose} style={headerBtnStyle} title="Close diff">
+                {'\u2715'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {isNarrow ? (
         /* Narrow layout: accordion file list */
         <>
-          {totalFiles > 0 && !error && searchInput}
+          {searchInput}
           <div style={{ flex: 1, overflow: 'auto', padding: '8px', minHeight: 0 }}>
             {error && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-muted)', gap: '8px' }}>
@@ -374,11 +383,89 @@ export function GitDiffPanel({
           </div>
         </>
       ) : (
-        /* Wide layout: sidebar + content */
+        /* Wide layout: session sidebar | file list | content */
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
-          {/* Left sidebar */}
+          {/* Session sidebar (200px) */}
+          <div style={{
+            width: '200px',
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--color-bg-surface)',
+            borderRight: '1px solid var(--color-border-base)',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '8px 10px',
+              borderBottom: '1px solid var(--color-border-base)',
+              flexShrink: 0,
+            }}>
+              <span style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                color: 'var(--color-text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>Sessions</span>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
+              {(sessions ?? []).map((s) => {
+                const isActive = s.id === currentSessionId;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => onSelectSession(s.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      width: '100%',
+                      padding: '6px 8px',
+                      border: 'none',
+                      borderLeft: isActive ? '2px solid var(--color-accent)' : '2px solid transparent',
+                      borderRadius: 'var(--radius-sm)',
+                      background: isActive ? 'var(--color-surface-bright, var(--color-bg-surface))' : 'transparent',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'background var(--transition-fast)',
+                      marginBottom: '2px',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) e.currentTarget.style.background = 'var(--color-bg-elevated)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <StatusDot status={s.status} size={6} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{
+                        fontSize: 'var(--text-sm)',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: isActive ? 600 : 400,
+                        color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>{s.name}</div>
+                      <div style={{
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--color-text-muted)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontFamily: 'var(--font-mono)',
+                      }}>{s.folderPath.split('/').slice(-2).join('/')}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* File list sidebar */}
           <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border-base)', background: 'var(--color-bg-surface)', overflow: 'hidden' }}>
-            <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--color-border-base)', flexShrink: 0 }}>
+            <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--color-border-base)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <input
                 className="diff-search-input"
                 type="text"
@@ -386,8 +473,11 @@ export function GitDiffPanel({
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onClick={e => e.stopPropagation()}
-                style={{ width: '100%', boxSizing: 'border-box', fontSize: '12px', padding: '3px 8px', border: '1px solid var(--color-border-subtle)', borderRadius: '4px', background: 'var(--color-bg-input)', color: 'var(--color-text-primary)', outline: 'none' }}
+                style={{ flex: 1, boxSizing: 'border-box', fontSize: '12px', padding: '3px 8px', border: '1px solid var(--color-border-subtle)', borderRadius: '4px', background: 'var(--color-bg-input)', color: 'var(--color-text-primary)', outline: 'none' }}
               />
+              <button onClick={onRefresh} style={{ ...headerBtnStyle, opacity: isLoading ? 0.5 : 1, flexShrink: 0 }} title="Refresh diff">
+                {'\u21BB'}
+              </button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
               {(error || (isEmpty && !isLoading)) && (
