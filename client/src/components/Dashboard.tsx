@@ -102,6 +102,7 @@ function FocusedDiffWrapper({
       onClose={onClose}
       onToggleFullscreen={onToggleFullscreen}
       onRefresh={refresh}
+      showSessionSelector={false}
     />
   );
 }

@@ -21,6 +21,7 @@ interface GitDiffPanelProps {
   onToggleFullscreen: () => void;
   onRefresh: () => void;
   showHeaderControls?: boolean;
+  showSessionSelector?: boolean;
 }
 
 type FileCategory = 'unstaged' | 'staged' | 'branch';
@@ -44,6 +45,7 @@ export function GitDiffPanel({
   onToggleFullscreen,
   onRefresh,
   showHeaderControls = true,
+  showSessionSelector = true,
 }: GitDiffPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isNarrow, setIsNarrow] = useState(false);
@@ -283,7 +285,7 @@ export function GitDiffPanel({
               </span>
             )}
           </div>
-          {isNarrow && (
+          {showSessionSelector && isNarrow && (
             <select
               className="diff-session-select"
               value={currentSessionId}
@@ -386,11 +388,13 @@ export function GitDiffPanel({
         /* Wide layout: session sidebar | file list | content */
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
           {/* Session sidebar (200px) */}
-          <SessionSidebar
-            sessions={sessions ?? []}
-            activeSessionId={currentSessionId}
-            onSelectSession={onSelectSession}
-          />
+          {showSessionSelector && (
+            <SessionSidebar
+              sessions={sessions ?? []}
+              activeSessionId={currentSessionId}
+              onSelectSession={onSelectSession}
+            />
+          )}
 
           {/* File list sidebar */}
           <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border-base)', background: 'var(--color-bg-surface)', overflow: 'hidden' }}>
