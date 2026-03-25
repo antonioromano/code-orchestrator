@@ -66,22 +66,32 @@ export class GitService {
     }
   }
 
+  private async getUntrackedFiles(folderPath: string): Promise<string[]> {
+    try {
+      const output = await execGit(['ls-files', '--others', '--exclude-standard'], folderPath);
+      return output.split('\n').map(l => l.trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
   async getDiff(folderPath: string): Promise<GitDiffResponse> {
     const isRepo = await this.isGitRepo(folderPath);
     if (!isRepo) {
-      return { unstaged: '', staged: '', branch: '', error: 'Not a git repository' };
+      return { unstaged: '', staged: '', branch: '', untracked: [], error: 'Not a git repository' };
     }
 
     try {
-      const [unstaged, staged, branch] = await Promise.all([
+      const [unstaged, staged, branch, untracked] = await Promise.all([
         execGit(['diff'], folderPath),
         execGit(['diff', '--cached'], folderPath),
         this.getBranchDiff(folderPath),
+        this.getUntrackedFiles(folderPath),
       ]);
-      return { unstaged, staged, branch };
+      return { unstaged, staged, branch, untracked };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to get diff';
-      return { unstaged: '', staged: '', branch: '', error: message };
+      return { unstaged: '', staged: '', branch: '', untracked: [], error: message };
     }
   }
 }
