@@ -24,13 +24,21 @@ interface GitDiffPanelProps {
   showSessionSelector?: boolean;
 }
 
-type FileCategory = 'unstaged' | 'staged' | 'branch';
+type SectionKey = 'unstaged' | 'staged' | 'branch' | 'untracked';
 
-interface FileEntry {
+interface DiffEntry {
   key: string;
-  category: FileCategory;
+  category: 'unstaged' | 'staged' | 'branch';
   file: parseDiff.File;
 }
+
+interface UntrackedEntry {
+  key: string;
+  category: 'untracked';
+  filePath: string;
+}
+
+type AnyEntry = DiffEntry | UntrackedEntry;
 
 export function GitDiffPanel({
   diff,
@@ -53,6 +61,18 @@ export function GitDiffPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [showFullKey, setShowFullKey] = useState<string | null>(null);
   const [collapseAllKey, setCollapseAllKey] = useState(0);
+  const [collapsedSections, setCollapsedSections] = useState<Set<SectionKey>>(new Set());
+  const [untrackedContent, setUntrackedContent] = useState<Map<string, string | 'loading' | 'error'>>(new Map());
+
+  const folderPath = sessions.find(s => s.id === currentSessionId)?.folderPath ?? '';
+
+  function toggleSection(key: SectionKey) {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   // Detect container width to switch between sidebar and accordion layouts
   useEffect(() => {
@@ -65,10 +85,11 @@ export function GitDiffPanel({
     return () => ro.disconnect();
   }, []);
 
-  const { stagedFiles, unstagedFiles, branchFiles, totalFiles, totalAdditions, totalDeletions } = useMemo(() => {
+  const { stagedFiles, unstagedFiles, branchFiles, untrackedFiles, totalFiles, totalAdditions, totalDeletions } = useMemo(() => {
     const staged = diff?.staged ? parseDiff(diff.staged) : [];
     const unstaged = diff?.unstaged ? parseDiff(diff.unstaged) : [];
     const branch = diff?.branch ? parseDiff(diff.branch) : [];
+    const untracked = diff?.untracked ?? [];
     let adds = 0;
     let dels = 0;
     for (const f of [...staged, ...unstaged, ...branch]) {
@@ -79,7 +100,8 @@ export function GitDiffPanel({
       stagedFiles: staged,
       unstagedFiles: unstaged,
       branchFiles: branch,
-      totalFiles: staged.length + unstaged.length + branch.length,
+      untrackedFiles: untracked,
+      totalFiles: staged.length + unstaged.length + branch.length + untracked.length,
       totalAdditions: adds,
       totalDeletions: dels,
     };
@@ -94,13 +116,14 @@ export function GitDiffPanel({
       chunk.changes.some(change => change.content.slice(1).toLowerCase().includes(query))
     );
   };
-  const filteredUnstaged = searchLower ? unstagedFiles.filter(f => fileMatchesSearch(f, searchLower)) : unstagedFiles;
-  const filteredStaged   = searchLower ? stagedFiles.filter(f => fileMatchesSearch(f, searchLower))   : stagedFiles;
-  const filteredBranch   = searchLower ? branchFiles.filter(f => fileMatchesSearch(f, searchLower))   : branchFiles;
+  const filteredUnstaged  = searchLower ? unstagedFiles.filter(f => fileMatchesSearch(f, searchLower))         : unstagedFiles;
+  const filteredStaged    = searchLower ? stagedFiles.filter(f => fileMatchesSearch(f, searchLower))           : stagedFiles;
+  const filteredBranch    = searchLower ? branchFiles.filter(f => fileMatchesSearch(f, searchLower))           : branchFiles;
+  const filteredUntracked = searchLower ? untrackedFiles.filter(p => p.toLowerCase().includes(searchLower))    : untrackedFiles;
 
   // Wide layout: sidebar selection state
-  const allEntries: FileEntry[] = useMemo(() => {
-    const entries: FileEntry[] = [];
+  const allEntries: AnyEntry[] = useMemo(() => {
+    const entries: AnyEntry[] = [];
     filteredUnstaged.forEach((file) =>
       entries.push({ key: `unstaged:${file.to ?? file.from ?? ''}`, category: 'unstaged', file }),
     );
@@ -110,8 +133,11 @@ export function GitDiffPanel({
     filteredBranch.forEach((file) =>
       entries.push({ key: `branch:${file.to ?? file.from ?? ''}`, category: 'branch', file }),
     );
+    filteredUntracked.forEach((filePath) =>
+      entries.push({ key: `untracked:${filePath}`, category: 'untracked', filePath }),
+    );
     return entries;
-  }, [filteredUnstaged, filteredStaged, filteredBranch]);
+  }, [filteredUnstaged, filteredStaged, filteredBranch, filteredUntracked]);
 
   const selectedKey = useMemo(() => {
     if (allEntries.length === 0) return null;
@@ -119,7 +145,27 @@ export function GitDiffPanel({
     return stillValid ? userSelectedKey : allEntries[0].key;
   }, [allEntries, userSelectedKey]);
 
-  const selectedEntry = allEntries.find(e => e.key === selectedKey) ?? null;
+  const selectedEntry: AnyEntry | null = allEntries.find(e => e.key === selectedKey) ?? null;
+
+  // Fetch untracked file content when selected
+  useEffect(() => {
+    if (!selectedEntry || selectedEntry.category !== 'untracked') return;
+    const { filePath } = selectedEntry;
+    if (untrackedContent.has(filePath)) return;
+    if (!folderPath) return;
+
+    setUntrackedContent(prev => new Map(prev).set(filePath, 'loading'));
+    const absPath = `${folderPath}/${filePath}`;
+    fetch(`/api/filesystem/file?path=${encodeURIComponent(absPath)}`)
+      .then(res => res.json())
+      .then((data: { content?: string; error?: string }) => {
+        setUntrackedContent(prev => new Map(prev).set(filePath, data.content ?? 'error'));
+      })
+      .catch(() => {
+        setUntrackedContent(prev => new Map(prev).set(filePath, 'error'));
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEntry, folderPath]);
 
   const headerBtnStyle = {
     background: 'none',
@@ -133,14 +179,86 @@ export function GitDiffPanel({
 
   const isEmpty = !error && totalFiles === 0;
 
-  const categoryColor: Record<FileCategory, string> = {
+  const categoryColor: Record<SectionKey, string> = {
     unstaged: 'var(--color-warning)',
     staged: 'var(--color-success)',
     branch: 'var(--color-accent)',
+    untracked: 'var(--color-text-muted)',
   };
 
   // Right-panel file content renderer (wide layout)
-  const renderFileContent = (entry: FileEntry) => {
+  const renderFileContent = (entry: AnyEntry) => {
+    if (entry.category === 'untracked') {
+      const contentVal = untrackedContent.get(entry.filePath);
+      return (
+        <>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 12px',
+              background: 'var(--color-bg-elevated)',
+              borderBottom: '1px solid var(--color-border-base)',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontSize: '11px', fontWeight: 600, color: categoryColor.untracked, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>untracked</span>
+            <span style={{ fontSize: '9px', color: 'var(--color-warning)', fontWeight: 700, flexShrink: 0 }}>??</span>
+            <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {entry.filePath}
+            </span>
+          </div>
+          <div style={{ overflow: 'auto', flex: 1 }}>
+            {contentVal === 'loading' || contentVal === undefined ? (
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>Loading…</div>
+            ) : contentVal === 'error' ? (
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>Binary or unreadable file</div>
+            ) : contentVal === '' ? (
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>(empty file)</div>
+            ) : (
+              <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+                <tbody>
+                  {contentVal.split('\n').map((line, i) => (
+                    <tr key={i} style={{ background: theme === 'dark' ? 'rgba(165,213,112,0.10)' : 'rgba(165,213,112,0.12)' }}>
+                      <td
+                        style={{
+                          width: '48px',
+                          minWidth: '48px',
+                          padding: '0 8px',
+                          textAlign: 'right',
+                          fontSize: '11px',
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--color-text-muted)',
+                          userSelect: 'none',
+                          verticalAlign: 'top',
+                          lineHeight: '20px',
+                        }}
+                      >
+                        {i + 1}
+                      </td>
+                      <td
+                        style={{
+                          padding: '0 8px',
+                          fontSize: '12px',
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--color-text-primary)',
+                          whiteSpace: 'pre',
+                          lineHeight: '20px',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {line}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      );
+    }
     const { file } = entry;
     const fileName = file.to === '/dev/null' ? file.from : file.to;
     const isBinary = file.chunks.length === 0 && file.additions === 0 && file.deletions === 0;
@@ -232,20 +350,30 @@ export function GitDiffPanel({
     </div>
   );
 
-  const sectionLabel = (text: string, topPad = false) => (
-    <div
-      style={{
-        fontSize: '11px',
-        fontWeight: 600,
-        color: 'var(--color-text-secondary)',
-        textTransform: 'uppercase',
-        padding: topPad ? '12px 4px 8px' : '4px 4px 8px',
-        letterSpacing: '0.5px',
-      }}
-    >
-      {text}
-    </div>
-  );
+  const sectionHeader = (key: SectionKey, text: string, count: number, topPad = false) => {
+    const isCollapsed = collapsedSections.has(key);
+    return (
+      <button
+        onClick={() => toggleSection(key)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          width: '100%',
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          padding: topPad ? '12px 4px 8px' : '4px 4px 8px',
+          color: 'var(--color-text-secondary)',
+          textAlign: 'left',
+        }}
+      >
+        <span style={{ fontSize: '10px', flexShrink: 0 }}>{isCollapsed ? '▸' : '▾'}</span>
+        <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{text}</span>
+        <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', marginLeft: '2px' }}>({count})</span>
+      </button>
+    );
+  };
 
   return (
     <div
@@ -360,25 +488,33 @@ export function GitDiffPanel({
             )}
             {!error && filteredUnstaged.length > 0 && (
               <div>
-                {stagedFiles.length > 0 && sectionLabel('Unstaged Changes')}
-                {filteredUnstaged.map((file, i) => (
+                {sectionHeader('unstaged', 'Unstaged Changes', filteredUnstaged.length)}
+                {!collapsedSections.has('unstaged') && filteredUnstaged.map((file, i) => (
                   <DiffFileSection key={`unstaged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} />
                 ))}
               </div>
             )}
             {!error && filteredStaged.length > 0 && (
               <div>
-                {sectionLabel('Staged Changes', filteredUnstaged.length > 0)}
-                {filteredStaged.map((file, i) => (
+                {sectionHeader('staged', 'Staged Changes', filteredStaged.length, filteredUnstaged.length > 0)}
+                {!collapsedSections.has('staged') && filteredStaged.map((file, i) => (
                   <DiffFileSection key={`staged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} />
                 ))}
               </div>
             )}
             {!error && filteredBranch.length > 0 && (
               <div>
-                {sectionLabel('Branch Changes', filteredUnstaged.length > 0 || filteredStaged.length > 0)}
-                {filteredBranch.map((file, i) => (
+                {sectionHeader('branch', 'Branch Changes', filteredBranch.length, filteredUnstaged.length > 0 || filteredStaged.length > 0)}
+                {!collapsedSections.has('branch') && filteredBranch.map((file, i) => (
                   <DiffFileSection key={`branch-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} />
+                ))}
+              </div>
+            )}
+            {!error && filteredUntracked.length > 0 && (
+              <div>
+                {sectionHeader('untracked', 'Untracked Files', filteredUntracked.length, filteredUnstaged.length > 0 || filteredStaged.length > 0 || filteredBranch.length > 0)}
+                {!collapsedSections.has('untracked') && filteredUntracked.map((filePath, i) => (
+                  <UntrackedFileRow key={`untracked-${i}`} filePath={filePath} />
                 ))}
               </div>
             )}
@@ -423,10 +559,8 @@ export function GitDiffPanel({
               )}
               {filteredUnstaged.length > 0 && (
                 <div>
-                  {(filteredStaged.length > 0 || filteredBranch.length > 0) && (
-                    <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '6px 10px 2px' }}>Unstaged</div>
-                  )}
-                  {filteredUnstaged.map((file) => {
+                  <SidebarSectionHeader label="Unstaged" count={filteredUnstaged.length} isCollapsed={collapsedSections.has('unstaged')} onToggle={() => toggleSection('unstaged')} topPad={false} />
+                  {!collapsedSections.has('unstaged') && filteredUnstaged.map((file) => {
                     const key = `unstaged:${file.to ?? file.from ?? ''}`;
                     const fileName = file.to === '/dev/null' ? file.from : file.to;
                     return <FileRow key={key} fileName={fileName ?? 'unknown'} isNew={!!file.new} isDeleted={!!file.deleted} additions={file.additions} deletions={file.deletions} isActive={selectedKey === key} onClick={() => setUserSelectedKey(key)} />;
@@ -435,8 +569,8 @@ export function GitDiffPanel({
               )}
               {filteredStaged.length > 0 && (
                 <div>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: filteredUnstaged.length > 0 ? '8px 10px 2px' : '6px 10px 2px' }}>Staged</div>
-                  {filteredStaged.map((file) => {
+                  <SidebarSectionHeader label="Staged" count={filteredStaged.length} isCollapsed={collapsedSections.has('staged')} onToggle={() => toggleSection('staged')} topPad={filteredUnstaged.length > 0} />
+                  {!collapsedSections.has('staged') && filteredStaged.map((file) => {
                     const key = `staged:${file.to ?? file.from ?? ''}`;
                     const fileName = file.to === '/dev/null' ? file.from : file.to;
                     return <FileRow key={key} fileName={fileName ?? 'unknown'} isNew={!!file.new} isDeleted={!!file.deleted} additions={file.additions} deletions={file.deletions} isActive={selectedKey === key} onClick={() => setUserSelectedKey(key)} />;
@@ -445,11 +579,49 @@ export function GitDiffPanel({
               )}
               {filteredBranch.length > 0 && (
                 <div>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: (filteredUnstaged.length > 0 || filteredStaged.length > 0) ? '8px 10px 2px' : '6px 10px 2px' }}>Branch</div>
-                  {filteredBranch.map((file) => {
+                  <SidebarSectionHeader label="Branch" count={filteredBranch.length} isCollapsed={collapsedSections.has('branch')} onToggle={() => toggleSection('branch')} topPad={filteredUnstaged.length > 0 || filteredStaged.length > 0} />
+                  {!collapsedSections.has('branch') && filteredBranch.map((file) => {
                     const key = `branch:${file.to ?? file.from ?? ''}`;
                     const fileName = file.to === '/dev/null' ? file.from : file.to;
                     return <FileRow key={key} fileName={fileName ?? 'unknown'} isNew={!!file.new} isDeleted={!!file.deleted} additions={file.additions} deletions={file.deletions} isActive={selectedKey === key} onClick={() => setUserSelectedKey(key)} />;
+                  })}
+                </div>
+              )}
+              {filteredUntracked.length > 0 && (
+                <div>
+                  <SidebarSectionHeader label="Untracked" count={filteredUntracked.length} isCollapsed={collapsedSections.has('untracked')} onToggle={() => toggleSection('untracked')} topPad={filteredUnstaged.length > 0 || filteredStaged.length > 0 || filteredBranch.length > 0} />
+                  {!collapsedSections.has('untracked') && filteredUntracked.map((filePath) => {
+                    const key = `untracked:${filePath}`;
+                    const shortName = filePath.split('/').pop() ?? filePath;
+                    return (
+                      <button
+                        key={key}
+                        title={filePath}
+                        onClick={() => setUserSelectedKey(key)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          width: '100%',
+                          padding: '4px 8px 4px 10px',
+                          border: 'none',
+                          borderLeft: selectedKey === key ? '2px solid var(--color-accent)' : '2px solid transparent',
+                          borderRadius: 'var(--radius-sm)',
+                          background: selectedKey === key ? 'var(--color-bg-elevated)' : 'transparent',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'background var(--transition-fast)',
+                          boxSizing: 'border-box',
+                        }}
+                        onMouseEnter={(e) => { if (selectedKey !== key) e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
+                        onMouseLeave={(e) => { if (selectedKey !== key) e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <span style={{ fontSize: '9px', color: 'var(--color-warning)', fontWeight: 700, flexShrink: 0 }}>??</span>
+                        <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: selectedKey === key ? 'var(--color-text-primary)' : 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                          {shortName}
+                        </span>
+                      </button>
+                    );
                   })}
                 </div>
               )}
@@ -479,6 +651,58 @@ export function GitDiffPanel({
         </div>
       )}
     </div>
+  );
+}
+
+function UntrackedFileRow({ filePath }: { filePath: string }) {
+  const shortName = filePath.split('/').pop() ?? filePath;
+  return (
+    <div
+      title={filePath}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '3px 12px 3px 12px',
+        fontSize: '12px',
+        fontFamily: 'var(--font-mono)',
+        color: 'var(--color-text-secondary)',
+      }}
+    >
+      <span style={{ fontSize: '9px', color: 'var(--color-warning)', fontWeight: 700, flexShrink: 0 }}>??</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortName}</span>
+    </div>
+  );
+}
+
+interface SidebarSectionHeaderProps {
+  label: string;
+  count: number;
+  isCollapsed: boolean;
+  onToggle: () => void;
+  topPad: boolean;
+}
+
+function SidebarSectionHeader({ label, count, isCollapsed, onToggle, topPad }: SidebarSectionHeaderProps) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '3px',
+        width: '100%',
+        border: 'none',
+        background: 'none',
+        cursor: 'pointer',
+        padding: topPad ? '8px 10px 2px' : '6px 10px 2px',
+        textAlign: 'left',
+      }}
+    >
+      <span style={{ fontSize: '9px', color: 'var(--color-text-muted)', flexShrink: 0 }}>{isCollapsed ? '▸' : '▾'}</span>
+      <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+      <span style={{ fontSize: '9px', color: 'var(--color-text-muted)', marginLeft: '2px' }}>({count})</span>
+    </button>
   );
 }
 

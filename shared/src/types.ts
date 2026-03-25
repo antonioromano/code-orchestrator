@@ -95,6 +95,7 @@ export interface GitDiffResponse {
   unstaged: string;
   staged: string;
   branch: string;
+  untracked: string[];
   error?: string;
 }
 
