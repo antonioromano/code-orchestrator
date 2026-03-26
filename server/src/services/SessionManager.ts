@@ -195,6 +195,7 @@ export class SessionManager {
   resizeSession(id: string, cols: number, rows: number): void {
     const session = this.sessions.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
+    if (session.status === 'exited') return;
     this.ptyManager.resize(session.pty, cols, rows);
   }
 
