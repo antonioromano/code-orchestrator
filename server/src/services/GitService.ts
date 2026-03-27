@@ -85,7 +85,7 @@ function parseHunks(diffText: string): ParsedHunk[] {
   return hunks;
 }
 
-function buildPatchText(fileHeader: string, hunks: ParsedHunk[], selection: PatchSelectionRequest): string {
+function buildPatchText(fileHeader: string, hunks: ParsedHunk[], selection: PatchSelectionRequest, mode: 'stage' | 'discard'): string {
   const patchLines: string[] = [fileHeader];
   let cumulativeDelta = 0;
 
@@ -99,19 +99,25 @@ function buildPatchText(fileHeader: string, hunks: ParsedHunk[], selection: Patc
     let selectedAddCount = 0;
     let selectedDelCount = 0;
     let changeIndex = 0;
+    let lastLineDropped = false;
 
     for (const rawLine of hunk.changes) {
       if (rawLine === '\\ No newline at end of file') {
-        processedLines.push(rawLine);
+        if (!lastLineDropped) processedLines.push(rawLine);
+        lastLineDropped = false;
         continue;
       }
+      lastLineDropped = false;
       const prefix = rawLine[0];
       if (prefix === '+') {
         if (selectedSet.has(changeIndex)) {
           processedLines.push(rawLine);
           selectedAddCount++;
+        } else if (mode === 'stage') {
+          // stage: unselected adds don't exist in the index, drop them
+          lastLineDropped = true;
         } else {
-          // Convert unselected add to context line
+          // discard: unselected adds exist in the working tree, keep as context
           processedLines.push(' ' + rawLine.slice(1));
           normalCount++;
         }
@@ -120,8 +126,11 @@ function buildPatchText(fileHeader: string, hunks: ParsedHunk[], selection: Patc
         if (selectedSet.has(changeIndex)) {
           processedLines.push(rawLine);
           selectedDelCount++;
+        } else if (mode === 'discard') {
+          // discard: unselected dels don't exist in the working tree, drop them
+          lastLineDropped = true;
         } else {
-          // Convert unselected del to context line
+          // stage: unselected dels exist in the index, keep as context
           processedLines.push(' ' + rawLine.slice(1));
           normalCount++;
         }
@@ -227,7 +236,7 @@ export class GitService {
 
       const hunks = parseHunks(diffText);
       const fileHeader = extractFileHeader(diffText);
-      const patchText = buildPatchText(fileHeader, hunks, selection);
+      const patchText = buildPatchText(fileHeader, hunks, selection, 'stage');
 
       await execGitWithStderr(['apply', '--cached', '--whitespace=nowarn', '-'], folderPath, patchText);
       return { success: true };
@@ -246,7 +255,7 @@ export class GitService {
 
       const hunks = parseHunks(diffText);
       const fileHeader = extractFileHeader(diffText);
-      const patchText = buildPatchText(fileHeader, hunks, selection);
+      const patchText = buildPatchText(fileHeader, hunks, selection, 'discard');
 
       await execGitWithStderr(['apply', '-R', '--whitespace=nowarn', '-'], folderPath, patchText);
 
