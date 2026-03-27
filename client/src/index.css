@@ -46,6 +46,31 @@ body {
   background: rgba(128, 128, 128, 0.8);
 }
 
+/* Non-focused terminal overlay — dims inactive terminals in grid view */
+.terminal-panel {
+  position: relative;
+}
+
+.terminal-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(128, 128, 128, 0.15);
+  pointer-events: none;
+  z-index: 2;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.dashboard-grid:focus-within .terminal-panel::after {
+  opacity: 1;
+}
+
+.dashboard-grid:focus-within .terminal-panel:focus-within::after {
+  opacity: 0;
+}
+
 /* Mobile bottom nav — hidden on desktop */
 .mobile-bottom-nav {
   display: flex;
