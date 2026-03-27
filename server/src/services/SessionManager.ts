@@ -20,6 +20,7 @@ interface ManagedSession {
   name: string;
   folderPath: string;
   agentType: string;
+  flags: string[];
   status: SessionStatus;
   createdAt: string;
   pty: IPty;
@@ -45,7 +46,7 @@ export class SessionManager {
     this.io = io;
   }
 
-  async createSession(folderPath: string, name?: string, agentType?: string, existingId?: string, existingCreatedAt?: string): Promise<SessionInfo> {
+  async createSession(folderPath: string, name?: string, agentType?: string, flags?: string[], existingId?: string, existingCreatedAt?: string): Promise<SessionInfo> {
     // Validate folder exists
     await access(folderPath);
 
@@ -69,7 +70,8 @@ export class SessionManager {
       }
     }, resolvedAgentType);
 
-    const ptyProcess = this.ptyManager.spawn(folderPath, command);
+    const resolvedFlags = flags || [];
+    const ptyProcess = this.ptyManager.spawn(folderPath, command, 120, 30, resolvedFlags);
 
     ptyProcess.onData((data) => {
       // Buffer output for replay on reconnect
@@ -91,6 +93,7 @@ export class SessionManager {
       name: sessionName,
       folderPath,
       agentType: resolvedAgentType,
+      flags: resolvedFlags,
       status: 'running',
       createdAt,
       pty: ptyProcess,
@@ -145,8 +148,8 @@ export class SessionManager {
       }
     }, session.agentType);
 
-    // Spawn fresh pty
-    const ptyProcess = this.ptyManager.spawn(session.folderPath, command);
+    // Spawn fresh pty with the same flags as the original session
+    const ptyProcess = this.ptyManager.spawn(session.folderPath, command, 120, 30, session.flags);
 
     ptyProcess.onData((data) => {
       session.outputBuffer += data;
@@ -210,7 +213,7 @@ export class SessionManager {
         continue;
       }
       try {
-        await this.createSession(p.folderPath, p.name, p.agentType, p.id, p.createdAt);
+        await this.createSession(p.folderPath, p.name, p.agentType, p.flags || [], p.id, p.createdAt);
         console.log(`Restored session: ${p.name} (${p.folderPath}) [${p.agentType}]`);
       } catch (err) {
         console.error(`Failed to restore session "${p.name}":`, err);
@@ -226,6 +229,7 @@ export class SessionManager {
       status: session.status,
       createdAt: session.createdAt,
       agentType: session.agentType,
+      flags: session.flags,
     };
   }
 
@@ -248,6 +252,7 @@ export class SessionManager {
       folderPath: s.folderPath,
       createdAt: s.createdAt,
       agentType: s.agentType,
+      flags: s.flags,
     }));
     await this.store.save(data);
   }

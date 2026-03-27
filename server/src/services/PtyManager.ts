@@ -18,10 +18,11 @@ export class PtyManager {
     }
   }
 
-  spawn(folderPath: string, command: string = 'claude', cols: number = 120, rows: number = 30): IPty {
+  spawn(folderPath: string, command: string = 'claude', cols: number = 120, rows: number = 30, flags?: string[]): IPty {
     const resolvedCommand = this.resolveCommand(command);
     const shell = process.env.SHELL || '/bin/zsh';
-    return pty.spawn(shell, ['-l', '-c', `exec ${resolvedCommand}`], {
+    const flagStr = flags?.length ? ' ' + flags.join(' ') : '';
+    return pty.spawn(shell, ['-l', '-c', `exec ${resolvedCommand}${flagStr}`], {
       name: 'xterm-256color',
       cols,
       rows,

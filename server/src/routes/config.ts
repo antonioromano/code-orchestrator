@@ -1,6 +1,21 @@
 import { Router } from 'express';
 import type { ConfigStore } from '../persistence/ConfigStore.js';
 import type { AgentRegistry } from '../services/AgentRegistry.js';
+import type { AgentFlag } from '@remote-orchestrator/shared';
+
+// Validate flag values stored in agentFlags config to prevent shell injection
+const FLAG_PATTERN = /^--?[a-zA-Z0-9][a-zA-Z0-9\-_.=:,/\s]*$/;
+
+function validateAgentFlags(agentFlags: Record<string, AgentFlag[]>): string | null {
+  for (const [, flags] of Object.entries(agentFlags)) {
+    for (const flag of flags) {
+      if (!FLAG_PATTERN.test(flag.value.trim())) {
+        return `Invalid flag value: "${flag.value}". Flags must start with - or -- and contain only safe characters.`;
+      }
+    }
+  }
+  return null;
+}
 
 export function createConfigRoutes(configStore: ConfigStore): Router {
   const router = Router();
@@ -12,10 +27,20 @@ export function createConfigRoutes(configStore: ConfigStore): Router {
 
   router.put('/', async (req, res) => {
     const current = await configStore.load();
-    const { defaultAgent, customAgents } = req.body;
+    const { defaultAgent, customAgents, agentFlags } = req.body;
+
+    if (agentFlags) {
+      const validationError = validateAgentFlags(agentFlags);
+      if (validationError) {
+        res.status(400).json({ error: validationError });
+        return;
+      }
+    }
+
     const updated = {
       defaultAgent: defaultAgent ?? current.defaultAgent,
       customAgents: customAgents ?? current.customAgents,
+      agentFlags: agentFlags ?? current.agentFlags,
     };
     await configStore.save(updated);
     res.json(updated);
