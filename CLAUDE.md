@@ -57,6 +57,10 @@ Single file (`src/types.ts`) defining all shared TypeScript types: session model
 ### Communication Flow
 Client ←(REST)→ Server for CRUD. Client ←(Socket.io rooms)→ Server for real-time terminal I/O and status updates. Each session is a Socket.io room identified by session UUID. Vite proxies `/api` and `/socket.io` to the server in dev.
 
+## Versioning
+
+When bumping the version, update it in **both** `package.json` (root) and the version badge in `README.md` (line 1: `# Code Orchestrator \`vX.Y.Z\``).
+
 ## Key Details
 
 - Server port: **5400**, Client port: **5173** (Vite dev server proxies API/WS to server)
