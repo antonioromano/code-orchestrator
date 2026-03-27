@@ -3,17 +3,19 @@ import { promisify } from 'util';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { gt as semverGt, valid as semverValid, clean as semverClean } from 'semver';
+import { gt as semverGt, clean as semverClean, valid as semverValid } from 'semver';
 import type { Server, Socket } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents, UpdateStatus } from '@remote-orchestrator/shared';
 
 const execFile = promisify(execFileCb);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT_PACKAGE_JSON = path.resolve(__dirname, '..', '..', '..', '..', 'package.json');
+const ROOT_PACKAGE_JSON = path.resolve(__dirname, '..', '..', '..', 'package.json');
 const REPO_OWNER = 'antonioromano';
 const REPO_NAME = 'code-orchestrator';
+const REPO_BRANCH = 'master';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const CHECK_COOLDOWN_MS = 60 * 1000; // 60 seconds between on-demand checks
 
 function readCurrentVersion(): string {
   try {
@@ -24,25 +26,19 @@ function readCurrentVersion(): string {
   }
 }
 
-interface GitHubRelease {
-  tag_name: string;
-  body: string;
-  html_url: string;
+interface RemotePackageJson {
+  version?: string;
 }
 
 export class UpdateService {
   private io: Server<ClientToServerEvents, ServerToClientEvents> | null = null;
-  private readonly currentVersion: string;
   private latestVersion: string | null = null;
   private changelog: string = '';
   private releaseUrl: string = '';
   private hasUpdate: boolean = false;
   private checkInterval: ReturnType<typeof setInterval> | null = null;
   private isApplying: boolean = false;
-
-  constructor() {
-    this.currentVersion = readCurrentVersion();
-  }
+  private lastCheckAt: number = 0;
 
   setIo(io: Server<ClientToServerEvents, ServerToClientEvents>): void {
     this.io = io;
@@ -62,7 +58,7 @@ export class UpdateService {
 
   getStatus(): UpdateStatus {
     return {
-      currentVersion: this.currentVersion,
+      currentVersion: readCurrentVersion(),
       latestVersion: this.latestVersion,
       hasUpdate: this.hasUpdate,
       changelog: this.changelog,
@@ -78,35 +74,28 @@ export class UpdateService {
   }
 
   async checkForUpdate(): Promise<void> {
+    if (Date.now() - this.lastCheckAt < CHECK_COOLDOWN_MS) return;
+    this.lastCheckAt = Date.now();
     try {
-      const res = await fetch(
-        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
-        { headers: { 'User-Agent': 'code-orchestrator-update-check' } },
-      );
-
-      if (res.status === 404) {
-        // No releases published yet — not an error
-        return;
-      }
+      const url = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/package.json`;
+      const res = await fetch(url, { headers: { 'User-Agent': 'code-orchestrator-update-check' } });
 
       if (!res.ok) {
-        console.warn(`[update] GitHub API returned ${res.status}, skipping check`);
+        console.warn(`[update] Could not fetch remote package.json (${res.status}), skipping check`);
         return;
       }
 
-      const release = await res.json() as GitHubRelease;
-      const rawTag = release.tag_name ?? '';
-      const remoteVersion = semverClean(rawTag) ?? semverValid(rawTag);
+      const pkg = await res.json() as RemotePackageJson;
+      const remoteVersion = semverClean(pkg.version ?? '') ?? semverValid(pkg.version ?? '');
 
       if (!remoteVersion) {
-        console.warn(`[update] Could not parse release tag: ${rawTag}`);
+        console.warn(`[update] Could not parse remote version: ${pkg.version}`);
         return;
       }
 
       this.latestVersion = remoteVersion;
-      this.changelog = release.body ?? '';
-      this.releaseUrl = release.html_url ?? '';
-      this.hasUpdate = semverGt(remoteVersion, this.currentVersion) ?? false;
+      this.releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/commits/${REPO_BRANCH}`;
+      this.hasUpdate = semverGt(remoteVersion, readCurrentVersion()) ?? false;
 
       if (this.hasUpdate) {
         this.io?.emit('update:available', this.getStatus());

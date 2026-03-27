@@ -44,8 +44,10 @@ export function setupSocketHandler(
 
   io.on('connection', (socket: TypedSocket) => {
     console.log(`Client connected: ${socket.id}`);
-    // Re-emit cached update status so late-joining clients see the button
+    // Re-emit cached update status so late-joining clients see the button,
+    // then trigger a fresh check (cooldown-guarded to avoid hammering GitHub)
     updateService.broadcastToSocket(socket);
+    void updateService.checkForUpdate();
 
     socket.on('session:join', (sessionId: string) => {
       socket.join(sessionId);
