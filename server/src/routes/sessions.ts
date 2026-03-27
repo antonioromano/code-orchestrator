@@ -1,9 +1,22 @@
 import { Router } from 'express';
 import type { SessionManager } from '../services/SessionManager.js';
 import type { OrderStore } from '../persistence/OrderStore.js';
+import type { ConfigStore } from '../persistence/ConfigStore.js';
 import type { CreateSessionRequest } from '@remote-orchestrator/shared';
 
-export function createSessionRoutes(manager: SessionManager, orderStore: OrderStore): Router {
+// Only allow safe flag characters — blocks shell metacharacters like ; | & ` $() etc.
+const FLAG_PATTERN = /^--?[a-zA-Z0-9][a-zA-Z0-9\-_.=:,/\s]*$/;
+
+function validateFlags(flags: string[]): string | null {
+  for (const flag of flags) {
+    if (!FLAG_PATTERN.test(flag.trim())) {
+      return `Invalid flag: "${flag}". Flags must start with - or -- and contain only safe characters.`;
+    }
+  }
+  return null;
+}
+
+export function createSessionRoutes(manager: SessionManager, orderStore: OrderStore, configStore: ConfigStore): Router {
   const router = Router();
 
   router.get('/', (_req, res) => {
@@ -35,15 +48,35 @@ export function createSessionRoutes(manager: SessionManager, orderStore: OrderSt
   });
 
   router.post('/', async (req, res) => {
-    const { folderPath, name, agentType } = req.body as CreateSessionRequest;
+    const { folderPath, name, agentType, flags } = req.body as CreateSessionRequest;
 
     if (!folderPath) {
       res.status(400).json({ error: 'folderPath is required' });
       return;
     }
 
+    if (flags?.length) {
+      const validationError = validateFlags(flags);
+      if (validationError) {
+        res.status(400).json({ error: validationError });
+        return;
+      }
+    }
+
     try {
-      const session = await manager.createSession(folderPath, name, agentType);
+      const session = await manager.createSession(folderPath, name, agentType, flags);
+
+      // Update sticky defaults: record which flags were enabled for this agent
+      const config = await configStore.load();
+      const agentFlagDefs = config.agentFlags[session.agentType];
+      if (agentFlagDefs?.length) {
+        config.agentFlags[session.agentType] = agentFlagDefs.map((f) => ({
+          ...f,
+          enabled: (flags || []).includes(f.value),
+        }));
+        await configStore.save(config);
+      }
+
       res.status(201).json(session);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create session';

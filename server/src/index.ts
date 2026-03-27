@@ -79,7 +79,7 @@ app.post('/api/screenshot', (req: express.Request, res: express.Response) => {
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
-app.use('/api/sessions', createSessionRoutes(sessionManager, orderStore));
+app.use('/api/sessions', createSessionRoutes(sessionManager, orderStore, configStore));
 app.use('/api/fs', createFilesystemRoutes());
 app.use('/api', createGitRoutes(sessionManager));
 app.use('/api/ngrok', createNgrokRoutes(ngrokService, authService));

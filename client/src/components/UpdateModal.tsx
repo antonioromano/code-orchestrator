@@ -13,15 +13,13 @@ interface UpdateModalProps {
 export function UpdateModal({ status, onClose }: UpdateModalProps) {
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [depsChanged, setDepsChanged] = useState(false);
   const [applied, setApplied] = useState(false);
 
   const handleApply = async () => {
     setApplying(true);
     setError(null);
     try {
-      const result = await api.applyUpdate();
-      if (result.depsChanged) setDepsChanged(true);
+      await api.applyUpdate();
       setApplied(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to apply update');
@@ -69,6 +67,20 @@ export function UpdateModal({ status, onClose }: UpdateModalProps) {
           ⚠️ This will restart the server and terminate all active sessions.
         </div>
 
+        {/* Deps info */}
+        {!applied && (
+          <div style={{
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--color-bg-surface)',
+            border: '1px solid var(--color-border-subtle)',
+            color: 'var(--color-text-secondary)',
+            fontSize: 'var(--text-sm)',
+          }}>
+            📦 Dependencies will be installed automatically via <code style={{ fontFamily: 'monospace' }}>npm install</code> before the server restarts.
+          </div>
+        )}
+
         {/* Success state */}
         {applied && (
           <div style={{
@@ -79,12 +91,7 @@ export function UpdateModal({ status, onClose }: UpdateModalProps) {
             color: 'var(--color-success)',
             fontSize: 'var(--text-sm)',
           }}>
-            <strong>Update applied!</strong> Server is restarting — the page will reconnect automatically.
-            {depsChanged && (
-              <div style={{ marginTop: 'var(--space-2)' }}>
-                Dependencies changed — run <code style={{ fontFamily: 'monospace' }}>npm install</code> after the server restarts.
-              </div>
-            )}
+            <strong>Update applied!</strong> Installing dependencies and restarting — the page will reconnect automatically.
           </div>
         )}
 

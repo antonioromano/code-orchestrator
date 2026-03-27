@@ -12,9 +12,16 @@ export interface AgentDefinition {
   installUrl?: string;
 }
 
+export interface AgentFlag {
+  id: string;        // crypto.randomUUID()
+  value: string;     // e.g. "--model opus-4", "--verbose"
+  enabled: boolean;  // sticky default (last-used state per agent)
+}
+
 export interface AppConfig {
   defaultAgent: AgentType;
   customAgents: AgentDefinition[];
+  agentFlags: Record<string, AgentFlag[]>;  // keyed by agent ID
 }
 
 export interface AgentStatus {
@@ -34,12 +41,14 @@ export interface SessionInfo {
   status: SessionStatus;
   createdAt: string;
   agentType: AgentType;
+  flags: string[];  // flags this session was created with
 }
 
 export interface CreateSessionRequest {
   folderPath: string;
   name?: string;
   agentType?: AgentType;
+  flags?: string[];  // resolved flag value strings to append to command
 }
 
 export interface CreateSessionResponse extends SessionInfo {}
@@ -79,7 +88,6 @@ export interface UpdateStatus {
 export interface UpdateApplyResponse {
   success: boolean;
   error?: string;
-  depsChanged: boolean;
 }
 
 export type NgrokTunnelStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

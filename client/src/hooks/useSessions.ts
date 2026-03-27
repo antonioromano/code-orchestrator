@@ -52,8 +52,8 @@ export function useSessions(socket: TypedSocket) {
     };
   }, [socket]);
 
-  const createSession = useCallback(async (folderPath: string, name?: string, agentType?: string) => {
-    const session = await api.createSession({ folderPath, name, agentType });
+  const createSession = useCallback(async (folderPath: string, name?: string, agentType?: string, flags?: string[]) => {
+    const session = await api.createSession({ folderPath, name, agentType, flags });
     setSessions((prev) => {
       if (prev.some((s) => s.id === session.id)) return prev;
       return [...prev, session];

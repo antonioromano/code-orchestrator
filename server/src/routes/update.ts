@@ -18,7 +18,7 @@ export function createUpdateRoutes(updateService: UpdateService): Router {
       res.status(status).json({ error: result.error });
       return;
     }
-    res.json({ success: true, depsChanged: result.depsChanged });
+    res.json({ success: true });
   });
 
   return router;

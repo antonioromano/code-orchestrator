@@ -105,9 +105,9 @@ export class UpdateService {
     }
   }
 
-  async applyUpdate(): Promise<{ success: boolean; error?: string; depsChanged: boolean }> {
+  async applyUpdate(): Promise<{ success: boolean; error?: string }> {
     if (this.isApplying) {
-      return { success: false, error: 'Update already in progress', depsChanged: false };
+      return { success: false, error: 'Update already in progress' };
     }
     this.isApplying = true;
 
@@ -115,34 +115,39 @@ export class UpdateService {
       // Guard: check for uncommitted local changes
       const { stdout: statusOut } = await execFile('git', ['status', '--porcelain'], { cwd: this.repoRoot() });
       if (statusOut.trim()) {
-        return { success: false, error: 'Cannot update: you have local changes. Stash or commit them first.', depsChanged: false };
+        return { success: false, error: 'Cannot update: you have local changes. Stash or commit them first.' };
       }
 
       // Run git pull
       const { stdout: pullOut } = await execFile('git', ['pull'], { cwd: this.repoRoot() });
-
-      // Check if package.json changed
-      let depsChanged = false;
-      try {
-        const { stdout: changedFiles } = await execFile('git', ['diff', '--name-only', 'ORIG_HEAD', 'HEAD'], { cwd: this.repoRoot() });
-        depsChanged = changedFiles.split('\n').some((f) => f.trim() === 'package.json' || f.trim() === 'package-lock.json');
-      } catch {
-        // ORIG_HEAD may not exist on first pull — not critical
-      }
-
       console.log('[update] git pull output:', pullOut.trim());
 
       this.io?.emit('update:applying');
 
-      // Give the response time to flush before exiting
-      setTimeout(() => process.exit(0), 500);
+      // Run npm install then exit — response has already been flushed by the time this fires
+      setTimeout(() => {
+        void (async () => {
+          try {
+            console.log('[update] Running npm install...');
+            const { stdout } = await execFile('npm', ['install'], {
+              cwd: this.repoRoot(),
+              timeout: 120_000,
+            });
+            const summary = stdout.trim().split('\n').pop() ?? '';
+            console.log('[update] npm install completed:', summary);
+          } catch (err) {
+            console.error('[update] npm install failed:', (err as Error).message);
+          }
+          process.exit(0);
+        })();
+      }, 500);
 
-      return { success: true, depsChanged };
+      return { success: true };
     } catch (err) {
       this.isApplying = false;
       const message = (err as Error).message ?? 'git pull failed';
       console.error('[update] applyUpdate error:', message);
-      return { success: false, error: message, depsChanged: false };
+      return { success: false, error: message };
     }
   }
 

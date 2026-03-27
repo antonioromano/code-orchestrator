@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { AgentDefinition } from '@remote-orchestrator/shared';
+import { useState, useEffect } from 'react';
+import type { AgentDefinition, AgentFlag } from '@remote-orchestrator/shared';
 import { Modal } from './primitives/index.js';
 import { Button } from './primitives/index.js';
 
@@ -9,8 +9,10 @@ interface CloneSessionModalProps {
   agents: AgentDefinition[];
   defaultAgentType?: string;
   theme: 'dark' | 'light';
-  onClone: (folderPath: string, agentType: string) => Promise<void>;
+  onClone: (folderPath: string, agentType: string, flags?: string[]) => Promise<void>;
   onClose: () => void;
+  agentFlags?: Record<string, AgentFlag[]>;
+  onSaveFlag?: (agentId: string, flag: AgentFlag) => Promise<void>;
 }
 
 export function CloneSessionModal({
@@ -20,22 +22,58 @@ export function CloneSessionModal({
   defaultAgentType = 'claude',
   onClone,
   onClose,
+  agentFlags = {},
+  onSaveFlag,
 }: CloneSessionModalProps) {
   const [agentType, setAgentType] = useState(currentAgentType || defaultAgentType);
   const [cloning, setCloning] = useState(false);
   const [error, setError] = useState('');
+  const [flagStates, setFlagStates] = useState<Record<string, boolean>>({});
+  const [newFlagValue, setNewFlagValue] = useState('');
+  const [savingFlag, setSavingFlag] = useState(false);
+
+  // Re-initialize flag states from sticky defaults when agent changes
+  useEffect(() => {
+    const flags = agentFlags[agentType] || [];
+    const initial: Record<string, boolean> = {};
+    for (const flag of flags) {
+      initial[flag.id] = flag.enabled;
+    }
+    setFlagStates(initial);
+  }, [agentType, agentFlags]);
+
+  const currentFlags = agentFlags[agentType] || [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCloning(true);
     setError('');
     try {
-      await onClone(folderPath, agentType);
+      const selectedFlags = currentFlags
+        .filter((f) => flagStates[f.id])
+        .map((f) => f.value);
+      await onClone(folderPath, agentType, selectedFlags.length ? selectedFlags : undefined);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session');
     } finally {
       setCloning(false);
+    }
+  };
+
+  const handleAddFlag = async () => {
+    const trimmed = newFlagValue.trim();
+    if (!trimmed || !onSaveFlag) return;
+    setSavingFlag(true);
+    try {
+      const flag: AgentFlag = { id: crypto.randomUUID(), value: trimmed, enabled: false };
+      await onSaveFlag(agentType, flag);
+      setFlagStates((prev) => ({ ...prev, [flag.id]: true }));
+      setNewFlagValue('');
+    } catch {
+      setError('Failed to save flag');
+    } finally {
+      setSavingFlag(false);
     }
   };
 
@@ -80,7 +118,7 @@ export function CloneSessionModal({
 
         {/* Agent */}
         {agents.length > 0 && (
-          <div style={{ marginBottom: 'var(--space-5)' }}>
+          <div style={{ marginBottom: 'var(--space-4)' }}>
             <label style={labelStyle}>Agent</label>
             <select
               value={agentType}
@@ -95,6 +133,69 @@ export function CloneSessionModal({
             </select>
           </div>
         )}
+
+        {/* Flags */}
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <label style={labelStyle}>Flags</label>
+          {currentFlags.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginBottom: 'var(--space-2)' }}>
+              {currentFlags.map((flag) => (
+                <label
+                  key={flag.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    cursor: 'pointer',
+                    padding: '3px 0',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={flagStates[flag.id] ?? false}
+                    onChange={(e) => setFlagStates((prev) => ({ ...prev, [flag.id]: e.target.checked }))}
+                    style={{ cursor: 'pointer', accentColor: 'var(--color-accent)' }}
+                  />
+                  <span style={{ fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)' }}>
+                    {flag.value}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {onSaveFlag && (
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <input
+                type="text"
+                value={newFlagValue}
+                onChange={(e) => setNewFlagValue(e.target.value)}
+                placeholder="--flag-name value"
+                style={{ ...inputStyle, flex: 1, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)' }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddFlag(); } }}
+              />
+              <button
+                type="button"
+                onClick={handleAddFlag}
+                disabled={savingFlag || !newFlagValue.trim()}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 'var(--text-sm)',
+                  border: '1px solid var(--color-border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'transparent',
+                  color: newFlagValue.trim() ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                  cursor: newFlagValue.trim() ? 'pointer' : 'default',
+                  flexShrink: 0,
+                  transition: 'background var(--transition-fast)',
+                }}
+                onMouseEnter={(e) => { if (newFlagValue.trim()) e.currentTarget.style.background = 'var(--color-accent-subtle)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                {savingFlag ? 'Saving...' : '+ Add'}
+              </button>
+            </div>
+          )}
+        </div>
 
         {error && (
           <div
@@ -123,7 +224,7 @@ const labelStyle: React.CSSProperties = {
   color: 'var(--color-text-secondary)',
 };
 
-const selectStyle: React.CSSProperties = {
+const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',
   fontSize: 'var(--text-md)',
@@ -133,5 +234,9 @@ const selectStyle: React.CSSProperties = {
   color: 'var(--color-text-primary)',
   outline: 'none',
   boxSizing: 'border-box',
+};
+
+const selectStyle: React.CSSProperties = {
+  ...inputStyle,
   cursor: 'pointer',
 };

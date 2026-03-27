@@ -5,6 +5,7 @@ import { atomicWrite } from '../utils/atomicWrite.js';
 const DEFAULT_CONFIG: AppConfig = {
   defaultAgent: 'claude',
   customAgents: [],
+  agentFlags: {},
 };
 
 export class ConfigStore {
