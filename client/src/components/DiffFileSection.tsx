@@ -1,8 +1,21 @@
 import { useState, useMemo, useEffect } from 'react';
 import type parseDiff from 'parse-diff';
 import { DiffHunk } from './DiffHunk.js';
+import { TriStateCheckbox } from './primitives/index.js';
+import type { FileSelection, FileMeta, TriState } from '../hooks/useCommitMode.js';
 
 const MAX_LINES_BEFORE_TRUNCATE = 500;
+
+interface CommitModeFileSectionProps {
+  fileSelection: FileSelection | undefined;
+  fileMeta: FileMeta;
+  fileTriState: TriState;
+  onToggleFile: () => void;
+  onToggleChunk: (chunkIndex: number, totalChanges: number) => void;
+  onToggleLine: (chunkIndex: number, changeIndex: number) => void;
+  onRevertLine: (chunkIndex: number, changeIndex: number) => void;
+  isNarrow: boolean; // narrow layout: file-level only
+}
 
 interface DiffFileSectionProps {
   file: parseDiff.File;
@@ -10,15 +23,21 @@ interface DiffFileSectionProps {
   defaultExpanded: boolean;
   collapseAllKey?: number;
   searchQuery?: string;
+  commitMode?: CommitModeFileSectionProps;
+  forceShowFull?: boolean;
 }
 
-export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, searchQuery }: DiffFileSectionProps) {
+export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, searchQuery, commitMode, forceShowFull }: DiffFileSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const [showFull, setShowFull] = useState(false);
+  const [showFull, setShowFull] = useState(forceShowFull ?? false);
 
   useEffect(() => {
     if (collapseAllKey) setExpanded(false);
   }, [collapseAllKey]);
+
+  useEffect(() => {
+    if (forceShowFull) setShowFull(true);
+  }, [forceShowFull]);
 
   const fileName = file.to === '/dev/null' ? file.from : file.to;
   const isBinary = file.chunks.length === 0 && (file.additions === 0 && file.deletions === 0);
@@ -52,6 +71,26 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
           userSelect: 'none',
         }}
       >
+        {/* File-level checkbox in commit mode */}
+        {commitMode && (
+          <span
+            onClick={e => {
+              e.stopPropagation();
+              commitMode.onToggleFile();
+            }}
+            style={{ display: 'inline-flex', alignItems: 'center', minWidth: 22, minHeight: 44 }}
+          >
+            <TriStateCheckbox
+              checked={
+                commitMode.fileTriState === 'all' ? true :
+                commitMode.fileTriState === 'partial' ? 'indeterminate' :
+                false
+              }
+              onChange={commitMode.onToggleFile}
+              label={`Toggle ${fileName} selection`}
+            />
+          </span>
+        )}
         <span
           style={{
             fontSize: '11px',
@@ -105,16 +144,43 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
             </div>
           ) : (
             <>
+              {commitMode?.isNarrow && (
+                <div style={{ padding: '6px 12px', fontSize: '11px', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-base)', fontStyle: 'italic' }}>
+                  Widen panel for line-level selection
+                </div>
+              )}
               {file.chunks.map((chunk, i) => {
                 if (isTruncated) {
-                  // Count lines up to this chunk
                   let linesBefore = 0;
                   for (let j = 0; j < i; j++) {
                     linesBefore += file.chunks[j].changes.length;
                   }
                   if (linesBefore >= MAX_LINES_BEFORE_TRUNCATE) return null;
                 }
-                return <DiffHunk key={i} chunk={chunk} theme={theme} searchQuery={searchQuery} />;
+
+                // Count add/del changes in this chunk for tri-state
+                const totalChanges = chunk.changes.filter(c => c.type === 'add' || c.type === 'del').length;
+
+                return (
+                  <DiffHunk
+                    key={i}
+                    chunk={chunk}
+                    theme={theme}
+                    searchQuery={searchQuery}
+                    commitMode={
+                      commitMode && !commitMode.isNarrow
+                        ? {
+                            chunkIndex: i,
+                            chunkSelection: commitMode.fileSelection?.get(i),
+                            totalChanges,
+                            onToggleChunk: () => commitMode.onToggleChunk(i, totalChanges),
+                            onToggleLine: (ci) => commitMode.onToggleLine(i, ci),
+                            onRevertLine: (ci) => commitMode.onRevertLine(i, ci),
+                          }
+                        : undefined
+                    }
+                  />
+                );
               })}
               {isTruncated && (
                 <div

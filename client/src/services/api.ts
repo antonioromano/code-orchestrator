@@ -1,4 +1,4 @@
-import type { SessionInfo, CreateSessionRequest, PathCompletionResponse, DirectoryChildrenResponse, FileContentResponse, FileSearchResponse, GitDiffResponse, NgrokStatus, NgrokStartResponse, AppConfig, AgentDetectionResponse, AuthStatus, AuthLoginResponse, UpdateStatus, UpdateApplyResponse } from '@remote-orchestrator/shared';
+import type { SessionInfo, CreateSessionRequest, PathCompletionResponse, DirectoryChildrenResponse, FileContentResponse, FileSearchResponse, GitDiffResponse, NgrokStatus, NgrokStartResponse, AppConfig, AgentDetectionResponse, AuthStatus, AuthLoginResponse, UpdateStatus, UpdateApplyResponse, PatchSelectionRequest, PatchOperationResponse, CommitRequest, CommitResponse, GitLogResponse } from '@remote-orchestrator/shared';
 
 const API_BASE = '/api';
 const TOKEN_KEY = 'orchestrator_auth_token';
@@ -113,6 +113,54 @@ export const api = {
 
   getSessionDiff: async (sessionId: string): Promise<GitDiffResponse> => {
     const res = await authFetch(`${API_BASE}/sessions/${sessionId}/diff`);
+    return res.json();
+  },
+
+  stagePatch: async (sessionId: string, selection: PatchSelectionRequest): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-stage-patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(selection),
+    });
+    return res.json();
+  },
+
+  discardPatch: async (sessionId: string, selection: PatchSelectionRequest): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-discard-patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(selection),
+    });
+    return res.json();
+  },
+
+  undoDiscard: async (sessionId: string, undoId: string): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-undo-discard/${undoId}`, {
+      method: 'POST',
+    });
+    return res.json();
+  },
+
+  gitCommit: async (sessionId: string, data: CommitRequest): Promise<CommitResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-commit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  gitUnstage: async (sessionId: string, filePath: string): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-unstage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filePath }),
+    });
+    return res.json();
+  },
+
+  getGitLog: async (sessionId: string): Promise<GitLogResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-log`);
     return res.json();
   },
 

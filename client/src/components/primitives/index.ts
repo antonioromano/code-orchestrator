@@ -5,3 +5,4 @@ export { IconButton } from './IconButton.js';
 export { Button } from './Button.js';
 export { Modal } from './Modal.js';
 export { Skeleton } from './Skeleton.js';
+export { TriStateCheckbox } from './TriStateCheckbox.js';

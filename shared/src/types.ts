@@ -115,6 +115,42 @@ export interface GitDiffResponse {
   error?: string;
 }
 
+// Selective commit types
+
+export interface ChunkSelection {
+  chunkIndex: number;
+  selectedChangeIndices: number[]; // 0-based indices into add/del changes only
+}
+
+export interface PatchSelectionRequest {
+  filePath: string;     // file.to ?? file.from from parse-diff output
+  fromPath?: string;    // for renames: file.from
+  source: 'unstaged' | 'staged';
+  chunks: ChunkSelection[];
+}
+
+export interface PatchOperationResponse {
+  success: boolean;
+  error?: string;    // raw git stderr on failure
+  undoId?: string;   // UUID for the discard undo buffer (discard ops only)
+}
+
+export interface CommitRequest {
+  message: string;
+  amend: boolean;
+}
+
+export interface CommitResponse {
+  success: boolean;
+  error?: string;
+  commitHash?: string; // short SHA on success
+}
+
+export interface GitLogResponse {
+  lastMessage: string;
+  isFirstCommit: boolean;
+}
+
 export interface DirectoryEntry {
   name: string;
   path: string;

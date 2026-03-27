@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import parseDiff from 'parse-diff';
+import { GitCommit } from 'lucide-react';
 import type { GitDiffResponse, SessionInfo } from '@remote-orchestrator/shared';
 import { DiffHunk } from './DiffHunk.js';
 import { DiffFileSection } from './DiffFileSection.js';
 import { SessionSidebar } from './SessionSidebar.js';
+import { CommitBar } from './CommitBar.js';
+import { TriStateCheckbox } from './primitives/index.js';
+import { useCommitMode, fileTriState } from '../hooks/useCommitMode.js';
+import type { FileMeta, TriState } from '../hooks/useCommitMode.js';
 
 const MAX_LINES_BEFORE_TRUNCATE = 500;
 const NARROW_BREAKPOINT = 520;
@@ -64,6 +69,14 @@ export function GitDiffPanel({
   const [collapsedSections, setCollapsedSections] = useState<Set<SectionKey>>(new Set());
   const [untrackedContent, setUntrackedContent] = useState<Map<string, string | 'loading' | 'error'>>(new Map());
 
+  const commitModeResult = useCommitMode();
+  const { commitMode, actions, selectedFileCount } = commitModeResult;
+  const commitModeActive = commitMode.isActive;
+
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const touchStartRef = useRef(0);
+
   const folderPath = sessions.find(s => s.id === currentSessionId)?.folderPath ?? '';
 
   function toggleSection(key: SectionKey) {
@@ -107,6 +120,63 @@ export function GitDiffPanel({
     };
   }, [diff]);
 
+  // Build FileMeta for unstaged files (for commit mode)
+  const unstagedFileMetas = useMemo((): FileMeta[] =>
+    unstagedFiles.map(file => ({
+      filePath: file.to === '/dev/null' ? (file.from ?? '') : (file.to ?? ''),
+      hunks: file.chunks.map((chunk, i) => ({
+        chunkIndex: i,
+        totalChanges: chunk.changes.filter(c => c.type === 'add' || c.type === 'del').length,
+      })),
+      isBinary: file.chunks.length === 0 && file.additions === 0 && file.deletions === 0,
+    })),
+  [unstagedFiles]);
+
+  const untrackedFileMetas = useMemo((): FileMeta[] =>
+    untrackedFiles.map(fp => ({ filePath: fp, hunks: [], isUntracked: true })),
+  [untrackedFiles]);
+
+  const allCommitFileMetas = useMemo(() =>
+    [...unstagedFileMetas, ...untrackedFileMetas],
+  [unstagedFileMetas, untrackedFileMetas]);
+
+  const hasOnlyUntrackedSelected = useMemo(() => {
+    if (!commitModeActive || commitMode.selections.size === 0) return false;
+    for (const [fp] of commitMode.selections) {
+      if (!untrackedFiles.includes(fp)) return false;
+    }
+    return true;
+  }, [commitModeActive, commitMode.selections, untrackedFiles]);
+
+  // Notify stale diff when diff changes while commit mode is active
+  const prevDiffRef = useRef<GitDiffResponse | null | undefined>(undefined);
+  useEffect(() => {
+    if (prevDiffRef.current !== undefined && prevDiffRef.current !== diff) {
+      actions.notifyDiffRefreshed();
+    }
+    prevDiffRef.current = diff;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diff]);
+
+  // Track mobile viewport
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  // Close sheet when commit mode exits (e.g., after successful commit)
+  useEffect(() => {
+    if (!commitModeActive) setSheetOpen(false);
+  }, [commitModeActive]);
+
+  const handleToggleCommitMode = () => {
+    if (!commitModeActive) {
+      actions.loadGitInfo(currentSessionId);
+    }
+    actions.toggleCommitMode();
+  };
+
   const defaultExpanded = totalFiles <= 20;
 
   const searchLower = searchQuery.toLowerCase();
@@ -116,10 +186,10 @@ export function GitDiffPanel({
       chunk.changes.some(change => change.content.slice(1).toLowerCase().includes(query))
     );
   };
-  const filteredUnstaged  = searchLower ? unstagedFiles.filter(f => fileMatchesSearch(f, searchLower))         : unstagedFiles;
-  const filteredStaged    = searchLower ? stagedFiles.filter(f => fileMatchesSearch(f, searchLower))           : stagedFiles;
-  const filteredBranch    = searchLower ? branchFiles.filter(f => fileMatchesSearch(f, searchLower))           : branchFiles;
-  const filteredUntracked = searchLower ? untrackedFiles.filter(p => p.toLowerCase().includes(searchLower))    : untrackedFiles;
+  const filteredUnstaged  = searchLower ? unstagedFiles.filter(f => fileMatchesSearch(f, searchLower))      : unstagedFiles;
+  const filteredStaged    = searchLower ? stagedFiles.filter(f => fileMatchesSearch(f, searchLower))        : stagedFiles;
+  const filteredBranch    = searchLower ? branchFiles.filter(f => fileMatchesSearch(f, searchLower))        : branchFiles;
+  const filteredUntracked = searchLower ? untrackedFiles.filter(p => p.toLowerCase().includes(searchLower)) : untrackedFiles;
 
   // Wide layout: sidebar selection state
   const allEntries: AnyEntry[] = useMemo(() => {
@@ -196,6 +266,10 @@ export function GitDiffPanel({
   const renderFileContent = (entry: AnyEntry) => {
     if (entry.category === 'untracked') {
       const contentVal = untrackedContent.get(entry.filePath);
+      const untrackedMeta: FileMeta = { filePath: entry.filePath, hunks: [], isUntracked: true };
+      const untrackedIsSelected = commitModeActive
+        ? (commitMode.selections.get(entry.filePath)?.size ?? 0) > 0
+        : false;
       return (
         <>
           <div
@@ -209,6 +283,19 @@ export function GitDiffPanel({
               flexShrink: 0,
             }}
           >
+            {commitModeActive && (
+              <span
+                onClick={(e) => { e.stopPropagation(); actions.toggleFile(entry.filePath, untrackedMeta); }}
+                style={{ display: 'inline-flex', alignItems: 'center' }}
+              >
+                <TriStateCheckbox
+                  checked={untrackedIsSelected}
+                  onChange={() => actions.toggleFile(entry.filePath, untrackedMeta)}
+                  size={11}
+                  label={`Toggle ${entry.filePath} selection`}
+                />
+              </span>
+            )}
             <span style={{ fontSize: '11px', fontWeight: 600, color: categoryColor.untracked, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>untracked</span>
             <span style={{ fontSize: '9px', color: 'var(--color-warning)', fontWeight: 700, flexShrink: 0 }}>??</span>
             <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
@@ -265,13 +352,17 @@ export function GitDiffPanel({
         </>
       );
     }
+
     const { file } = entry;
+    const filePath = file.to === '/dev/null' ? (file.from ?? '') : (file.to ?? '');
     const fileName = file.to === '/dev/null' ? file.from : file.to;
     const isBinary = file.chunks.length === 0 && file.additions === 0 && file.deletions === 0;
     const isNew = file.new;
     const isDeleted = file.deleted;
     const totalLines = file.chunks.reduce((sum, c) => sum + c.changes.length, 0);
-    const isTruncated = showFullKey !== entry.key && totalLines > MAX_LINES_BEFORE_TRUNCATE;
+    // In commit mode for unstaged files, always show the full diff
+    const effectiveShowFull = commitModeActive && entry.category === 'unstaged';
+    const isTruncated = !effectiveShowFull && showFullKey !== entry.key && totalLines > MAX_LINES_BEFORE_TRUNCATE;
 
     return (
       <>
@@ -311,7 +402,27 @@ export function GitDiffPanel({
                 for (let j = 0; j < i; j++) linesBefore += file.chunks[j].changes.length;
                 if (linesBefore >= MAX_LINES_BEFORE_TRUNCATE) return null;
               }
-              return <DiffHunk key={i} chunk={chunk} theme={theme} searchQuery={searchLower || undefined} />;
+              const totalChanges = chunk.changes.filter(c => c.type === 'add' || c.type === 'del').length;
+              const commitModeForHunk = commitModeActive && entry.category === 'unstaged' ? {
+                chunkIndex: i,
+                chunkSelection: commitMode.selections.get(filePath)?.get(i),
+                totalChanges,
+                onToggleChunk: () => actions.toggleChunk(filePath, i, totalChanges),
+                onToggleLine: (ci: number) => actions.toggleLine(filePath, i, ci),
+                onRevertLine: async (ci: number) => {
+                  await actions.discardLine(currentSessionId, filePath, i, ci);
+                  onRefresh();
+                },
+              } : undefined;
+              return (
+                <DiffHunk
+                  key={i}
+                  chunk={chunk}
+                  theme={theme}
+                  searchQuery={searchLower || undefined}
+                  commitMode={commitModeForHunk}
+                />
+              );
             })}
             {isTruncated && (
               <div style={{ padding: '8px 12px', textAlign: 'center' }}>
@@ -451,6 +562,30 @@ export function GitDiffPanel({
               {'\u2261'}
             </button>
           )}
+          {/* Commit mode toggle — only in Git Diff tab (showHeaderControls = false) */}
+          {!showHeaderControls && !isEmpty && !error && (
+            <button
+              onClick={handleToggleCommitMode}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: commitModeActive ? 'var(--color-accent-subtle)' : 'none',
+                border: commitModeActive ? '1px solid var(--color-accent)' : '1px solid transparent',
+                borderRadius: '4px',
+                color: commitModeActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: commitModeActive ? 600 : 400,
+                padding: '2px 6px',
+                lineHeight: 1,
+              }}
+              title={commitModeActive ? 'Exit commit mode' : 'Stage and commit selected changes'}
+            >
+              <GitCommit size={11} strokeWidth={2} />
+              {commitModeActive ? 'Exit' : 'Commit'}
+            </button>
+          )}
           {showHeaderControls && (
             <>
               <button onClick={onToggleFullscreen} style={headerBtnStyle} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
@@ -495,14 +630,40 @@ export function GitDiffPanel({
             {!error && filteredUnstaged.length > 0 && (
               <div>
                 {sectionHeader('unstaged', 'Unstaged Changes', filteredUnstaged.length)}
-                {!collapsedSections.has('unstaged') && filteredUnstaged.map((file, i) => (
-                  <DiffFileSection key={`unstaged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} />
-                ))}
+                {!collapsedSections.has('unstaged') && filteredUnstaged.map((file, i) => {
+                  const filePath = file.to === '/dev/null' ? (file.from ?? '') : (file.to ?? '');
+                  const fileMeta = unstagedFileMetas.find(m => m.filePath === filePath);
+                  const commitModeProps = commitModeActive && fileMeta ? {
+                    fileSelection: commitMode.selections.get(filePath),
+                    fileMeta,
+                    fileTriState: fileTriState(commitMode.selections.get(filePath), fileMeta),
+                    onToggleFile: () => actions.toggleFile(filePath, fileMeta),
+                    onToggleChunk: (chunkIndex: number, totalChanges: number) => actions.toggleChunk(filePath, chunkIndex, totalChanges),
+                    onToggleLine: (chunkIndex: number, changeIndex: number) => actions.toggleLine(filePath, chunkIndex, changeIndex),
+                    onRevertLine: async (chunkIndex: number, changeIndex: number) => {
+                      await actions.discardLine(currentSessionId, filePath, chunkIndex, changeIndex);
+                      onRefresh();
+                    },
+                    isNarrow,
+                  } : undefined;
+                  return (
+                    <DiffFileSection
+                      key={`unstaged-${i}`}
+                      file={file}
+                      theme={theme}
+                      defaultExpanded={defaultExpanded}
+                      collapseAllKey={collapseAllKey}
+                      searchQuery={searchLower || undefined}
+                      commitMode={commitModeProps}
+                      forceShowFull={commitModeActive}
+                    />
+                  );
+                })}
               </div>
             )}
             {!error && filteredStaged.length > 0 && (
               <div>
-                {sectionHeader('staged', 'Staged Changes', filteredStaged.length, filteredUnstaged.length > 0)}
+                {sectionHeader('staged', commitModeActive ? 'Already Staged' : 'Staged Changes', filteredStaged.length, filteredUnstaged.length > 0)}
                 {!collapsedSections.has('staged') && filteredStaged.map((file, i) => (
                   <DiffFileSection key={`staged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} />
                 ))}
@@ -512,11 +673,32 @@ export function GitDiffPanel({
               <div>
                 {sectionHeader('untracked', 'Untracked Files', filteredUntracked.length, filteredUnstaged.length > 0 || filteredStaged.length > 0 || filteredBranch.length > 0)}
                 {!collapsedSections.has('untracked') && filteredUntracked.map((filePath, i) => (
-                  <UntrackedFileRow key={`untracked-${i}`} filePath={filePath} onTrack={() => handleTrackFile(filePath)} />
+                  <UntrackedFileRow
+                    key={`untracked-${i}`}
+                    filePath={filePath}
+                    onTrack={() => handleTrackFile(filePath)}
+                    commitModeToggle={commitModeActive ? {
+                      isSelected: (commitMode.selections.get(filePath)?.size ?? 0) > 0,
+                      onToggle: () => actions.toggleFile(filePath, { filePath, hunks: [], isUntracked: true }),
+                    } : undefined}
+                  />
                 ))}
               </div>
             )}
           </div>
+          {commitModeActive && !isMobile && (
+            <CommitBar
+              sessionId={currentSessionId}
+              fileMetas={allCommitFileMetas}
+              untrackedFiles={untrackedFiles}
+              commitModeResult={commitModeResult}
+              onClose={actions.toggleCommitMode}
+              onSelectAll={() => actions.selectAll(allCommitFileMetas)}
+              onClearAll={actions.clearAll}
+              hasOnlyUntrackedSelected={hasOnlyUntrackedSelected}
+              onRefresh={onRefresh}
+            />
+          )}
         </>
       ) : (
         /* Wide layout: session sidebar | file list | content */
@@ -561,13 +743,35 @@ export function GitDiffPanel({
                   {!collapsedSections.has('unstaged') && filteredUnstaged.map((file) => {
                     const key = `unstaged:${file.to ?? file.from ?? ''}`;
                     const fileName = file.to === '/dev/null' ? file.from : file.to;
-                    return <FileRow key={key} fileName={fileName ?? 'unknown'} isNew={!!file.new} isDeleted={!!file.deleted} additions={file.additions} deletions={file.deletions} isActive={selectedKey === key} onClick={() => setUserSelectedKey(key)} />;
+                    const filePath = file.to === '/dev/null' ? (file.from ?? '') : (file.to ?? '');
+                    const fileMeta = commitModeActive ? unstagedFileMetas.find(m => m.filePath === filePath) : undefined;
+                    const triState = fileMeta ? fileTriState(commitMode.selections.get(filePath), fileMeta) : undefined;
+                    return (
+                      <FileRow
+                        key={key}
+                        fileName={fileName ?? 'unknown'}
+                        isNew={!!file.new}
+                        isDeleted={!!file.deleted}
+                        additions={file.additions}
+                        deletions={file.deletions}
+                        isActive={selectedKey === key}
+                        onClick={() => setUserSelectedKey(key)}
+                        checkboxState={triState}
+                        onToggleCheckbox={fileMeta ? () => actions.toggleFile(filePath, fileMeta) : undefined}
+                      />
+                    );
                   })}
                 </div>
               )}
               {filteredStaged.length > 0 && (
                 <div>
-                  <SidebarSectionHeader label="Staged" count={filteredStaged.length} isCollapsed={collapsedSections.has('staged')} onToggle={() => toggleSection('staged')} topPad={filteredUnstaged.length > 0} />
+                  <SidebarSectionHeader
+                    label={commitModeActive ? 'Already Staged' : 'Staged'}
+                    count={filteredStaged.length}
+                    isCollapsed={collapsedSections.has('staged')}
+                    onToggle={() => toggleSection('staged')}
+                    topPad={filteredUnstaged.length > 0}
+                  />
                   {!collapsedSections.has('staged') && filteredStaged.map((file) => {
                     const key = `staged:${file.to ?? file.from ?? ''}`;
                     const fileName = file.to === '/dev/null' ? file.from : file.to;
@@ -581,6 +785,7 @@ export function GitDiffPanel({
                   {!collapsedSections.has('untracked') && filteredUntracked.map((filePath) => {
                     const key = `untracked:${filePath}`;
                     const shortName = filePath.split('/').pop() ?? filePath;
+                    const isSelected = commitModeActive ? (commitMode.selections.get(filePath)?.size ?? 0) > 0 : false;
                     return (
                       <button
                         key={key}
@@ -604,6 +809,19 @@ export function GitDiffPanel({
                         onMouseEnter={(e) => { if (selectedKey !== key) e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
                         onMouseLeave={(e) => { if (selectedKey !== key) e.currentTarget.style.background = 'transparent'; }}
                       >
+                        {commitModeActive && (
+                          <span
+                            onClick={(e) => { e.stopPropagation(); actions.toggleFile(filePath, { filePath, hunks: [], isUntracked: true }); }}
+                            style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
+                          >
+                            <TriStateCheckbox
+                              checked={isSelected}
+                              onChange={() => actions.toggleFile(filePath, { filePath, hunks: [], isUntracked: true })}
+                              size={11}
+                              label={`Toggle ${filePath}`}
+                            />
+                          </span>
+                        )}
                         <span style={{ fontSize: '9px', color: 'var(--color-warning)', fontWeight: 700, flexShrink: 0 }}>??</span>
                         <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: selectedKey === key ? 'var(--color-text-primary)' : 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                           {shortName}
@@ -642,14 +860,70 @@ export function GitDiffPanel({
                 {renderFileContent(selectedEntry)}
               </div>
             )}
+            {commitModeActive && !isMobile && (
+              <CommitBar
+                sessionId={currentSessionId}
+                fileMetas={allCommitFileMetas}
+                untrackedFiles={untrackedFiles}
+                commitModeResult={commitModeResult}
+                onClose={actions.toggleCommitMode}
+                onSelectAll={() => actions.selectAll(allCommitFileMetas)}
+                onClearAll={actions.clearAll}
+                hasOnlyUntrackedSelected={hasOnlyUntrackedSelected}
+                onRefresh={onRefresh}
+              />
+            )}
           </div>
         </div>
+      )}
+
+      {/* Mobile FAB — opens bottom sheet */}
+      {commitModeActive && isMobile && (
+        <button className="commit-fab" onClick={() => setSheetOpen(true)} aria-label="Open commit panel">
+          <GitCommit size={22} strokeWidth={2} />
+          {selectedFileCount > 0 && (
+            <span className="commit-fab-badge">{selectedFileCount}</span>
+          )}
+        </button>
+      )}
+
+      {/* Mobile bottom sheet */}
+      {commitModeActive && isMobile && sheetOpen && (
+        <>
+          <div className="commit-sheet-backdrop" onClick={() => setSheetOpen(false)} />
+          <div
+            className="commit-sheet"
+            onTouchStart={(e) => { touchStartRef.current = e.touches[0].clientY; }}
+            onTouchEnd={(e) => {
+              if (e.changedTouches[0].clientY - touchStartRef.current > 60) setSheetOpen(false);
+            }}
+          >
+            <div className="commit-sheet-handle" />
+            <CommitBar
+              sessionId={currentSessionId}
+              fileMetas={allCommitFileMetas}
+              untrackedFiles={untrackedFiles}
+              commitModeResult={commitModeResult}
+              onClose={() => { setSheetOpen(false); actions.toggleCommitMode(); }}
+              onSelectAll={() => actions.selectAll(allCommitFileMetas)}
+              onClearAll={actions.clearAll}
+              hasOnlyUntrackedSelected={hasOnlyUntrackedSelected}
+              onRefresh={onRefresh}
+            />
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function UntrackedFileRow({ filePath, onTrack }: { filePath: string; onTrack: () => void }) {
+interface UntrackedFileRowProps {
+  filePath: string;
+  onTrack: () => void;
+  commitModeToggle?: { isSelected: boolean; onToggle: () => void };
+}
+
+function UntrackedFileRow({ filePath, onTrack, commitModeToggle }: UntrackedFileRowProps) {
   const shortName = filePath.split('/').pop() ?? filePath;
   return (
     <div
@@ -664,6 +938,19 @@ function UntrackedFileRow({ filePath, onTrack }: { filePath: string; onTrack: ()
         color: 'var(--color-text-secondary)',
       }}
     >
+      {commitModeToggle && (
+        <span
+          onClick={(e) => { e.stopPropagation(); commitModeToggle.onToggle(); }}
+          style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
+        >
+          <TriStateCheckbox
+            checked={commitModeToggle.isSelected}
+            onChange={commitModeToggle.onToggle}
+            size={11}
+            label={`Toggle ${filePath}`}
+          />
+        </span>
+      )}
       <span style={{ fontSize: '9px', color: 'var(--color-warning)', fontWeight: 700, flexShrink: 0 }}>??</span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{shortName}</span>
       <button
@@ -716,9 +1003,11 @@ interface FileRowProps {
   deletions: number;
   isActive: boolean;
   onClick: () => void;
+  checkboxState?: TriState;
+  onToggleCheckbox?: () => void;
 }
 
-function FileRow({ fileName, isNew, isDeleted, additions, deletions, isActive, onClick }: FileRowProps) {
+function FileRow({ fileName, isNew, isDeleted, additions, deletions, isActive, onClick, checkboxState, onToggleCheckbox }: FileRowProps) {
   const shortName = fileName.split('/').pop() ?? fileName;
   return (
     <button
@@ -742,6 +1031,19 @@ function FileRow({ fileName, isNew, isDeleted, additions, deletions, isActive, o
       onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
       onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
     >
+      {checkboxState !== undefined && onToggleCheckbox && (
+        <span
+          onClick={(e) => { e.stopPropagation(); onToggleCheckbox(); }}
+          style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
+        >
+          <TriStateCheckbox
+            checked={checkboxState === 'all' ? true : checkboxState === 'partial' ? 'indeterminate' : false}
+            onChange={onToggleCheckbox}
+            size={11}
+            label={`Toggle ${fileName} selection`}
+          />
+        </span>
+      )}
       <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
         {shortName}
       </span>

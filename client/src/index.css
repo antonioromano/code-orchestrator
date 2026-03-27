@@ -264,4 +264,88 @@ body {
 .md-preview th, .md-preview td { border: 1px solid var(--color-border-base); padding: 6px 10px; text-align: left; }
 .md-preview th { background: var(--color-bg-elevated); font-weight: 600; }
 .md-preview hr { border: none; border-top: 1px solid var(--color-border-base); margin: 1em 0; }
+
+/* Commit FAB (mobile only — controlled by React isMobile state) */
+.commit-fab {
+  position: fixed;
+  bottom: calc(64px + 16px);
+  right: 16px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.commit-fab:active {
+  transform: scale(0.92);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.commit-fab-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--color-error);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 14px;
+  pointer-events: none;
+}
+
+/* Commit bottom sheet (mobile only — controlled by React state) */
+.commit-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  animation: commitFadeIn 0.2s ease;
+}
+
+@keyframes commitFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.commit-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 101;
+  border-radius: 16px 16px 0 0;
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-border-base);
+  max-height: 85vh;
+  overflow-y: auto;
+  animation: commitSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  overscroll-behavior: contain;
+}
+
+@keyframes commitSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.commit-sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-border-base);
+  margin: 10px auto 2px;
+}
 .md-preview img { max-width: 100%; height: auto; }

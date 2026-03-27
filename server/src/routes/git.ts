@@ -1,18 +1,7 @@
 import { Router } from 'express';
-import { execFile } from 'child_process';
-import { execSync } from 'child_process';
 import type { SessionManager } from '../services/SessionManager.js';
 import { GitService } from '../services/GitService.js';
-
-function findGit(): string {
-  try {
-    return execSync('which git', { encoding: 'utf-8' }).trim();
-  } catch {
-    return 'git';
-  }
-}
-
-const GIT_PATH = findGit();
+import type { PatchSelectionRequest, CommitRequest } from '@remote-orchestrator/shared';
 
 export function createGitRoutes(manager: SessionManager): Router {
   const router = Router();
@@ -41,7 +30,7 @@ export function createGitRoutes(manager: SessionManager): Router {
     res.json(diff);
   });
 
-  router.post('/sessions/:id/git-add', (req, res) => {
+  router.post('/sessions/:id/git-add', async (req, res) => {
     const session = manager.getSessionInfo(req.params.id);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
@@ -54,13 +43,102 @@ export function createGitRoutes(manager: SessionManager): Router {
       return;
     }
 
-    execFile(GIT_PATH, ['add', filePath], { cwd: session.folderPath }, (err) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ ok: true });
-    });
+    const result = await gitService.stageFile(session.folderPath, filePath);
+    if (!result.success) {
+      res.status(500).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  router.post('/sessions/:id/git-stage-patch', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const selection = req.body as PatchSelectionRequest;
+    if (!selection?.filePath || !Array.isArray(selection?.chunks)) {
+      res.status(400).json({ success: false, error: 'Invalid selection descriptor' });
+      return;
+    }
+
+    const result = await gitService.stagePatch(session.folderPath, selection);
+    res.status(result.success ? 200 : 400).json(result);
+  });
+
+  router.post('/sessions/:id/git-discard-patch', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const selection = req.body as PatchSelectionRequest;
+    if (!selection?.filePath || !Array.isArray(selection?.chunks)) {
+      res.status(400).json({ success: false, error: 'Invalid selection descriptor' });
+      return;
+    }
+
+    const result = await gitService.discardPatch(session.folderPath, selection);
+    res.status(result.success ? 200 : 400).json(result);
+  });
+
+  router.post('/sessions/:id/git-undo-discard/:undoId', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const result = await gitService.undoDiscard(req.params.undoId);
+    res.status(result.success ? 200 : 404).json(result);
+  });
+
+  router.post('/sessions/:id/git-commit', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const { message, amend } = req.body as CommitRequest;
+    if (!message?.trim()) {
+      res.status(400).json({ success: false, error: 'Commit message required' });
+      return;
+    }
+
+    const result = await gitService.commit(session.folderPath, message, !!amend);
+    res.status(result.success ? 200 : 400).json(result);
+  });
+
+  router.post('/sessions/:id/git-unstage', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const { filePath } = req.body as { filePath?: string };
+    if (!filePath) {
+      res.status(400).json({ success: false, error: 'filePath required' });
+      return;
+    }
+
+    const result = await gitService.unstageFile(session.folderPath, filePath);
+    res.status(result.success ? 200 : 400).json(result);
+  });
+
+  router.get('/sessions/:id/git-log', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const result = await gitService.getLastCommit(session.folderPath);
+    res.json(result);
   });
 
   return router;
