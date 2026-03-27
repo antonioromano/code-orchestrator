@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { AgentDefinition, AgentStatus, AppConfig } from '@remote-orchestrator/shared';
+import type { AgentDefinition, AgentFlag, AgentStatus, AppConfig } from '@remote-orchestrator/shared';
 import { X } from 'lucide-react';
 import { api } from '../services/api.js';
 import { Modal } from './primitives/index.js';
@@ -21,6 +21,8 @@ function agentAbbrev(agent: AgentDefinition): string {
 export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
   const [defaultAgent, setDefaultAgent] = useState(config.defaultAgent);
   const [customAgents, setCustomAgents] = useState<AgentDefinition[]>(config.customAgents);
+  const [agentFlags, setAgentFlags] = useState<Record<string, AgentFlag[]>>(config.agentFlags || {});
+  const [newFlagValues, setNewFlagValues] = useState<Record<string, string>>({});
   const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([]);
   const [detecting, setDetecting] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -45,6 +47,30 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
   const handleRemoveCustomAgent = (id: string) => {
     setCustomAgents((prev) => prev.filter((a) => a.id !== id));
     if (defaultAgent === id) setDefaultAgent('claude');
+    // Remove flags for deleted agent
+    setAgentFlags((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const handleAddFlag = (agentId: string) => {
+    const value = (newFlagValues[agentId] || '').trim();
+    if (!value) return;
+    const flag: AgentFlag = { id: crypto.randomUUID(), value, enabled: false };
+    setAgentFlags((prev) => ({
+      ...prev,
+      [agentId]: [...(prev[agentId] || []), flag],
+    }));
+    setNewFlagValues((prev) => ({ ...prev, [agentId]: '' }));
+  };
+
+  const handleRemoveFlag = (agentId: string, flagId: string) => {
+    setAgentFlags((prev) => ({
+      ...prev,
+      [agentId]: (prev[agentId] || []).filter((f) => f.id !== flagId),
+    }));
   };
 
   const handleSave = async () => {
@@ -56,7 +82,7 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ defaultAgent, customAgents });
+      await onSave({ defaultAgent, customAgents, agentFlags });
       onClose();
     } catch {
       setError('Failed to save settings.');
@@ -73,6 +99,9 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
     ...agentStatuses.map((s) => s.agent),
     ...customAgents,
   ];
+
+  // Agents to show in the flags section: builtins from detection + custom agents
+  const flagAgents: AgentDefinition[] = allAgents;
 
   return (
     <Modal
@@ -211,21 +240,7 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
               <button
                 onClick={() => handleRemoveCustomAgent(agent.id)}
                 title="Remove agent"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 28,
-                  height: 28,
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--color-text-muted)',
-                  cursor: 'pointer',
-                  padding: 0,
-                  flexShrink: 0,
-                  borderRadius: 'var(--radius-sm)',
-                  transition: 'color var(--transition-fast), background var(--transition-fast)',
-                }}
+                style={removeButtonStyle}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.color = 'var(--color-error)';
                   e.currentTarget.style.background = 'var(--color-error-subtle)';
@@ -242,22 +257,101 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
         </div>
         <button
           onClick={handleAddCustomAgent}
-          style={{
-            marginTop: 'var(--space-2)',
-            padding: '6px 12px',
-            fontSize: 'var(--text-base)',
-            border: '1px solid var(--color-border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            background: 'transparent',
-            color: 'var(--color-accent)',
-            cursor: 'pointer',
-            transition: 'background var(--transition-fast)',
-          }}
+          style={addButtonStyle}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-accent-subtle)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
           + Add Custom Agent
         </button>
+      </section>
+
+      {/* Agent Flags */}
+      <section style={{ marginBottom: 'var(--space-6)' }}>
+        <label style={sectionLabel}>Agent Flags</label>
+        {flagAgents.length === 0 && detecting && (
+          <Skeleton height="40px" borderRadius="var(--radius-md)" />
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {flagAgents.map((agent) => {
+            const flags = agentFlags[agent.id] || [];
+            return (
+              <div key={agent.id}>
+                <div style={{
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 600,
+                  color: 'var(--color-text-secondary)',
+                  marginBottom: 'var(--space-2)',
+                  fontFamily: 'var(--font-mono)',
+                }}>
+                  {agent.name}
+                </div>
+                {flags.length === 0 && (
+                  <div style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
+                    No flags configured.
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginBottom: 'var(--space-2)' }}>
+                  {flags.map((flag) => (
+                    <div key={flag.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <code style={{
+                        flex: 1,
+                        fontSize: 'var(--text-sm)',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--color-text-primary)',
+                        padding: '3px 8px',
+                        background: 'var(--color-bg-surface)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-border-subtle)',
+                      }}>
+                        {flag.value}
+                      </code>
+                      <button
+                        onClick={() => handleRemoveFlag(agent.id, flag.id)}
+                        title="Remove flag"
+                        style={removeButtonStyle}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = 'var(--color-error)';
+                          e.currentTarget.style.background = 'var(--color-error-subtle)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--color-text-muted)';
+                          e.currentTarget.style.background = 'none';
+                        }}
+                      >
+                        <X size={14} strokeWidth={2} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <input
+                    type="text"
+                    value={newFlagValues[agent.id] || ''}
+                    onChange={(e) => setNewFlagValues((prev) => ({ ...prev, [agent.id]: e.target.value }))}
+                    placeholder="--flag-name value"
+                    style={{ ...inputStyle, flex: 1, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)' }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddFlag(agent.id); } }}
+                  />
+                  <button
+                    onClick={() => handleAddFlag(agent.id)}
+                    disabled={!(newFlagValues[agent.id] || '').trim()}
+                    style={{
+                      ...addButtonStyle,
+                      marginTop: 0,
+                      padding: '6px 12px',
+                      color: (newFlagValues[agent.id] || '').trim() ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                      cursor: (newFlagValues[agent.id] || '').trim() ? 'pointer' : 'default',
+                    }}
+                    onMouseEnter={(e) => { if ((newFlagValues[agent.id] || '').trim()) e.currentTarget.style.background = 'var(--color-accent-subtle)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    + Add
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {error && (
@@ -316,5 +410,33 @@ const copyBtnStyle: React.CSSProperties = {
   fontSize: 'var(--text-sm)',
   color: 'var(--color-text-secondary)',
   flexShrink: 0,
+  transition: 'background var(--transition-fast)',
+};
+
+const removeButtonStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 28,
+  height: 28,
+  background: 'none',
+  border: 'none',
+  color: 'var(--color-text-muted)',
+  cursor: 'pointer',
+  padding: 0,
+  flexShrink: 0,
+  borderRadius: 'var(--radius-sm)',
+  transition: 'color var(--transition-fast), background var(--transition-fast)',
+};
+
+const addButtonStyle: React.CSSProperties = {
+  marginTop: 'var(--space-2)',
+  padding: '6px 12px',
+  fontSize: 'var(--text-base)',
+  border: '1px solid var(--color-border-subtle)',
+  borderRadius: 'var(--radius-md)',
+  background: 'transparent',
+  color: 'var(--color-accent)',
+  cursor: 'pointer',
   transition: 'background var(--transition-fast)',
 };

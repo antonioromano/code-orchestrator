@@ -191,17 +191,23 @@ function AppInner() {
     }
   }, []);
 
-  const handleCreate = async (folderPath: string, name?: string, agentType?: string) => {
-    await createSession(folderPath, name, agentType);
+  const handleCreate = async (folderPath: string, name?: string, agentType?: string, flags?: string[]) => {
+    await createSession(folderPath, name, agentType, flags);
   };
 
   const handleClone = useCallback((folderPath: string, agentType?: string) => {
     setCloneModalState({ folderPath, agentType });
   }, []);
 
-  const handleCloneConfirm = async (folderPath: string, agentType: string) => {
-    await createSession(folderPath, undefined, agentType);
+  const handleCloneConfirm = async (folderPath: string, agentType: string, flags?: string[]) => {
+    await createSession(folderPath, undefined, agentType, flags);
   };
+
+  const handleSaveFlag = useCallback(async (agentId: string, flag: import('@remote-orchestrator/shared').AgentFlag) => {
+    if (!config) return;
+    const current = config.agentFlags?.[agentId] || [];
+    await updateConfig({ agentFlags: { ...config.agentFlags, [agentId]: [...current, flag] } });
+  }, [config, updateConfig]);
 
   const handleDelete = useCallback((id: string) => {
     setPendingDeleteId(id);
@@ -515,6 +521,8 @@ function AppInner() {
           initialFolderPath={pickedFolder}
           defaultAgentType={config?.defaultAgent}
           agents={config ? [...BUILTIN_AGENTS, ...config.customAgents] : []}
+          agentFlags={config?.agentFlags}
+          onSaveFlag={handleSaveFlag}
         />
       )}
 
@@ -527,6 +535,8 @@ function AppInner() {
           theme={theme}
           onClone={handleCloneConfirm}
           onClose={() => setCloneModalState(null)}
+          agentFlags={config?.agentFlags}
+          onSaveFlag={handleSaveFlag}
         />
       )}
 
