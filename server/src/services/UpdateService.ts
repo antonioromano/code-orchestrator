@@ -17,14 +17,14 @@ const REPO_BRANCH = 'master';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const CHECK_COOLDOWN_MS = 60 * 1000; // 60 seconds between on-demand checks
 
-function readCurrentVersion(): string {
+const CURRENT_VERSION = (() => {
   try {
     const pkg = JSON.parse(readFileSync(ROOT_PACKAGE_JSON, 'utf-8')) as { version?: string };
     return pkg.version ?? '0.0.0';
   } catch {
     return '0.0.0';
   }
-}
+})();
 
 interface RemotePackageJson {
   version?: string;
@@ -58,7 +58,7 @@ export class UpdateService {
 
   getStatus(): UpdateStatus {
     return {
-      currentVersion: readCurrentVersion(),
+      currentVersion: CURRENT_VERSION,
       latestVersion: this.latestVersion,
       hasUpdate: this.hasUpdate,
       changelog: this.changelog,
@@ -95,7 +95,7 @@ export class UpdateService {
 
       this.latestVersion = remoteVersion;
       this.releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/commits/${REPO_BRANCH}`;
-      this.hasUpdate = semverGt(remoteVersion, readCurrentVersion()) ?? false;
+      this.hasUpdate = semverGt(remoteVersion, CURRENT_VERSION) ?? false;
 
       if (this.hasUpdate) {
         this.io?.emit('update:available', this.getStatus());
@@ -152,6 +152,6 @@ export class UpdateService {
   }
 
   private repoRoot(): string {
-    return path.resolve(__dirname, '..', '..', '..', '..');
+    return path.dirname(ROOT_PACKAGE_JSON);
   }
 }

@@ -33,7 +33,10 @@ export class SessionStore {
         agentType: s.agentType || 'claude',
         flags: s.flags || [],
       }));
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn('[SessionStore] Failed to load sessions:', err);
+      }
       return [];
     }
   }

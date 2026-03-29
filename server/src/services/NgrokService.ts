@@ -1,5 +1,8 @@
-import { spawn, execSync } from 'child_process';
+import { spawn, execFileSync, execFile as execFileCb } from 'child_process';
 import type { ChildProcess } from 'child_process';
+import { promisify } from 'util';
+
+const execFile = promisify(execFileCb);
 import * as http from 'http';
 import type { Server } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents, NgrokStatus, NgrokTunnelStatus } from '@remote-orchestrator/shared';
@@ -7,7 +10,16 @@ import { SleepPreventionService } from './SleepPreventionService.js';
 
 function findNgrok(): string | null {
   try {
-    return execSync('which ngrok', { encoding: 'utf-8' }).trim();
+    return execFileSync('which', ['ngrok'], { encoding: 'utf-8' }).trim();
+  } catch {
+    return null;
+  }
+}
+
+async function findNgrokAsync(): Promise<string | null> {
+  try {
+    const { stdout } = await execFile('which', ['ngrok']);
+    return stdout.trim();
   } catch {
     return null;
   }
@@ -52,8 +64,8 @@ export class NgrokService {
     };
   }
 
-  recheckInstallation(): void {
-    this.ngrokPath = findNgrok();
+  async recheckInstallation(): Promise<void> {
+    this.ngrokPath = await findNgrokAsync();
   }
 
   async start(port: number = 5400): Promise<string> {

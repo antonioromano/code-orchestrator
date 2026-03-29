@@ -16,7 +16,10 @@ export class OrderStore {
     try {
       const data = await readFile(this.filePath, 'utf-8');
       return JSON.parse(data);
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn('[OrderStore] Failed to load order:', err);
+      }
       return [];
     }
   }

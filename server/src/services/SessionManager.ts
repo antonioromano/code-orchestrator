@@ -14,6 +14,7 @@ import { StateDetector } from './StateDetector.js';
 import { SessionStore, type PersistedSession } from '../persistence/SessionStore.js';
 import { ConfigStore } from '../persistence/ConfigStore.js';
 import { AgentRegistry } from './AgentRegistry.js';
+import { cleanupSessionDimensions } from '../socket/handler.js';
 
 interface ManagedSession {
   id: string;
@@ -25,7 +26,6 @@ interface ManagedSession {
   createdAt: string;
   pty: IPty;
   stateDetector: StateDetector;
-  ptyListenerAttached: boolean;
   outputBuffer: string;
 }
 
@@ -73,6 +73,19 @@ export class SessionManager {
     const resolvedFlags = flags || [];
     const ptyProcess = this.ptyManager.spawn(folderPath, command, 120, 30, resolvedFlags);
 
+    const session: ManagedSession = {
+      id,
+      name: sessionName,
+      folderPath,
+      agentType: resolvedAgentType,
+      flags: resolvedFlags,
+      status: 'running',
+      createdAt,
+      pty: ptyProcess,
+      stateDetector,
+      outputBuffer: '',
+    };
+
     ptyProcess.onData((data) => {
       // Buffer output for replay on reconnect
       session.outputBuffer += data;
@@ -87,20 +100,6 @@ export class SessionManager {
       stateDetector.setExited();
       this.io?.to(id).emit('session:exit', { sessionId: id, exitCode });
     });
-
-    const session: ManagedSession = {
-      id,
-      name: sessionName,
-      folderPath,
-      agentType: resolvedAgentType,
-      flags: resolvedFlags,
-      status: 'running',
-      createdAt,
-      pty: ptyProcess,
-      stateDetector,
-      ptyListenerAttached: true,
-      outputBuffer: '',
-    };
 
     this.sessions.set(id, session);
     await this.persistSessions();
@@ -117,6 +116,7 @@ export class SessionManager {
     session.stateDetector.destroy();
     this.ptyManager.kill(session.pty);
     this.sessions.delete(id);
+    cleanupSessionDimensions(id);
     await this.persistSessions();
 
     this.io?.emit('session:deleted', { sessionId: id });

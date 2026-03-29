@@ -6,6 +6,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { SessionManager } from './services/SessionManager.js';
+import { GitService } from './services/GitService.js';
 import { OrderStore } from './persistence/OrderStore.js';
 import { ConfigStore } from './persistence/ConfigStore.js';
 import { AgentRegistry } from './services/AgentRegistry.js';
@@ -59,21 +60,12 @@ ngrokService.setIo(io);
 ngrokService.getAuthRequired = () => authService.enabled;
 ngrokService.onDisconnect = () => authService.clearAuth();
 
+// Git service
+const gitService = new GitService();
+
 // Update service
 const updateService = new UpdateService();
 updateService.setIo(io);
-
-// Temporary screenshot-save endpoint (dev only)
-import fs from 'fs';
-const screenshotsDir = path.resolve(__dirname, '..', '..', 'docs', 'screenshots');
-if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
-app.post('/api/screenshot', (req: express.Request, res: express.Response) => {
-  const { name, data } = req.body as { name: string; data: string };
-  const b64 = data.replace(/^data:image\/\w+;base64,/, '');
-  fs.writeFileSync(path.join(screenshotsDir, name), Buffer.from(b64, 'base64'));
-  console.log(`[screenshot] saved ${name}`);
-  res.json({ ok: true });
-});
 
 // Routes
 app.get('/api/health', (_req, res) => {
@@ -81,7 +73,7 @@ app.get('/api/health', (_req, res) => {
 });
 app.use('/api/sessions', createSessionRoutes(sessionManager, orderStore, configStore));
 app.use('/api/fs', createFilesystemRoutes(sessionManager));
-app.use('/api', createGitRoutes(sessionManager));
+app.use('/api', createGitRoutes(sessionManager, gitService));
 app.use('/api/ngrok', createNgrokRoutes(ngrokService, authService));
 app.use('/api/auth', createAuthRoutes(authService));
 app.use('/api/config', createConfigRoutes(configStore));

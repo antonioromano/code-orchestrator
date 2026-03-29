@@ -43,8 +43,8 @@ export function createNgrokRoutes(ngrokService: NgrokService, authService: AuthS
     }
   });
 
-  router.post('/recheck', (_req, res) => {
-    ngrokService.recheckInstallation();
+  router.post('/recheck', async (_req, res) => {
+    await ngrokService.recheckInstallation();
     res.json({ ...ngrokService.getStatus(), authRequired: authService.enabled });
   });
 

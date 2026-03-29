@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import type { AgentDefinition, AgentStatus } from '@remote-orchestrator/shared';
 
 const BUILTIN_AGENTS: AgentDefinition[] = [
@@ -44,7 +44,7 @@ export class AgentRegistry {
   detectInstalled(): AgentStatus[] {
     return BUILTIN_AGENTS.map((agent) => {
       try {
-        const resolvedPath = execSync(`which ${agent.command}`, { encoding: 'utf-8' }).trim();
+        const resolvedPath = execFileSync('which', [agent.command], { encoding: 'utf-8' }).trim();
         return { agent, installed: true, resolvedPath };
       } catch {
         return { agent, installed: false };

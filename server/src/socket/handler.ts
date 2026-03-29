@@ -11,6 +11,10 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 // the largest client rather than the most-recently-resized one.
 const clientDimensions = new Map<string, Map<string, { cols: number; rows: number }>>();
 
+export function cleanupSessionDimensions(sessionId: string): void {
+  clientDimensions.delete(sessionId);
+}
+
 function getMaxDimensions(sessionId: string): { cols: number; rows: number } | null {
   const sockets = clientDimensions.get(sessionId);
   if (!sockets || sockets.size === 0) return null;

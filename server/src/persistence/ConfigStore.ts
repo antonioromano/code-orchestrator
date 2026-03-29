@@ -23,7 +23,10 @@ export class ConfigStore {
     try {
       const data = await readFile(this.filePath, 'utf-8');
       return { ...DEFAULT_CONFIG, ...JSON.parse(data) };
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn('[ConfigStore] Failed to load config:', err);
+      }
       return { ...DEFAULT_CONFIG };
     }
   }

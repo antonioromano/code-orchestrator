@@ -4,7 +4,7 @@ import type { AgentRegistry } from '../services/AgentRegistry.js';
 import type { AgentFlag } from '@remote-orchestrator/shared';
 
 // Validate flag values stored in agentFlags config to prevent shell injection
-const FLAG_PATTERN = /^--?[a-zA-Z0-9][a-zA-Z0-9\-_.=:,/\s]*$/;
+const FLAG_PATTERN = /^--?[a-zA-Z0-9][a-zA-Z0-9\-_.=:,/ ]*$/;
 
 function validateAgentFlags(agentFlags: Record<string, AgentFlag[]>): string | null {
   for (const [, flags] of Object.entries(agentFlags)) {

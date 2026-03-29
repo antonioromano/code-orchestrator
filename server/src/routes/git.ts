@@ -1,11 +1,10 @@
 import { Router } from 'express';
 import type { SessionManager } from '../services/SessionManager.js';
-import { GitService } from '../services/GitService.js';
+import type { GitService } from '../services/GitService.js';
 import type { PatchSelectionRequest, CommitRequest } from '@remote-orchestrator/shared';
 
-export function createGitRoutes(manager: SessionManager): Router {
+export function createGitRoutes(manager: SessionManager, gitService: GitService): Router {
   const router = Router();
-  const gitService = new GitService();
 
   router.get('/sessions/:id/diff', async (req, res) => {
     const session = manager.getSessionInfo(req.params.id);
