@@ -1,9 +1,12 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { execFile } from 'child_process';
 import { readFile, stat, readdir } from 'fs/promises';
 import path from 'path';
 import { getPathCompletions } from '../utils/fsAutocomplete.js';
 import { getDirectoryChildren } from '../utils/fsChildren.js';
+import { atomicWrite } from '../utils/atomicWrite.js';
+import type { SessionManager } from '../services/SessionManager.js';
+import type { WriteFileRequest } from '@remote-orchestrator/shared';
 
 const MAX_FILE_SIZE_BYTES = 512 * 1024; // 512 KB
 
@@ -16,7 +19,7 @@ const BINARY_EXTENSIONS = new Set([
   '.mp3', '.mp4', '.wav', '.avi', '.mov', '.webm',
 ]);
 
-export function createFilesystemRoutes(): Router {
+export function createFilesystemRoutes(sessionManager: SessionManager): Router {
   const router = Router();
 
   router.get('/autocomplete', async (req, res) => {
@@ -88,13 +91,73 @@ export function createFilesystemRoutes(): Router {
       }
 
       const mimeType = getMimeType(ext);
-      res.json({ content, encoding: 'utf8', mimeType, size, truncated });
+      res.json({ content, encoding: 'utf8', mimeType, size, truncated, mtimeMs: fileStat.mtimeMs });
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'ENOENT') {
         res.status(404).json({ error: 'file not found' });
       } else {
         res.status(500).json({ error: 'failed to read file' });
+      }
+    }
+  });
+
+  router.put('/file', express.json({ limit: '2mb' }), async (req, res) => {
+    const { sessionId, path: rawPath, content, originalMtimeMs } = req.body as WriteFileRequest;
+
+    if (!sessionId || !rawPath || typeof content !== 'string') {
+      res.status(400).json({ error: 'sessionId, path, and content are required' });
+      return;
+    }
+
+    if (!path.isAbsolute(rawPath)) {
+      res.status(400).json({ error: 'invalid path' });
+      return;
+    }
+
+    const session = sessionManager.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'session not found' });
+      return;
+    }
+
+    const resolved = path.resolve(rawPath);
+    if (!resolved.startsWith(session.folderPath + path.sep) && resolved !== session.folderPath) {
+      res.status(403).json({ error: 'path is outside session working directory' });
+      return;
+    }
+
+    const ext = path.extname(resolved).toLowerCase();
+    if (BINARY_EXTENSIONS.has(ext)) {
+      res.status(400).json({ error: 'binary files cannot be written' });
+      return;
+    }
+
+    try {
+      // Conflict detection: check mtime if provided
+      if (originalMtimeMs !== undefined) {
+        try {
+          const currentStat = await stat(resolved);
+          if (Math.abs(currentStat.mtimeMs - originalMtimeMs) > 1) {
+            res.json({ success: false, size: 0, mtimeMs: currentStat.mtimeMs, conflict: true });
+            return;
+          }
+        } catch (err: unknown) {
+          const code = (err as NodeJS.ErrnoException).code;
+          // File doesn't exist yet — allow write (new file)
+          if (code !== 'ENOENT') throw err;
+        }
+      }
+
+      await atomicWrite(resolved, content);
+      const newStat = await stat(resolved);
+      res.json({ success: true, size: newStat.size, mtimeMs: newStat.mtimeMs });
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EACCES' || code === 'EPERM') {
+        res.status(403).json({ success: false, size: 0, mtimeMs: 0, error: 'permission denied' });
+      } else {
+        res.status(500).json({ success: false, size: 0, mtimeMs: 0, error: 'failed to write file' });
       }
     }
   });

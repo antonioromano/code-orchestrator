@@ -32,7 +32,7 @@ import dockerLang from 'react-syntax-highlighter/dist/esm/languages/prism/docker
 import makefileLang from 'react-syntax-highlighter/dist/esm/languages/prism/makefile';
 import { syntaxTheme } from '../utils/syntaxTheme';
 import { langFromPath } from '../utils/langFromPath';
-import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code } from 'lucide-react';
+import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon } from 'lucide-react';
 import type { SessionInfo, FileContentResponse, FileSearchResult } from '@remote-orchestrator/shared';
 import { ExplorerFolderTree } from './ExplorerFolderTree.js';
 import { SessionSidebar } from './SessionSidebar.js';
@@ -230,6 +230,14 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
   const [isNarrow, setIsNarrow] = useState(false);
   const [isTreeVisible, setIsTreeVisible] = useState(true);
   const [mdPreview, setMdPreview] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [originalMtimeMs, setOriginalMtimeMs] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const pendingNavRef = useRef<(() => void) | null>(null);
 
   // Detect container width to switch between wide and narrow layouts
   useEffect(() => {
@@ -275,27 +283,45 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
     return () => clearTimeout(timer);
   }, [searchQuery, selectedSessionId, sessions]);
 
-  const handleSessionSelect = useCallback((id: string) => {
+  const doSessionSelect = useCallback((id: string) => {
     setSelectedSessionId(id);
     setSelectedFilePath(null);
     setFileContent(null);
     setFileError(null);
     setSearchQuery('');
     setSearchResults(null);
+    setIsEditMode(false);
+    setEditContent('');
+    setOriginalMtimeMs(null);
     onSelectSession?.(id);
-  }, []);
+  }, [onSelectSession]);
 
-  const handleFileSelect = useCallback(async (filePath: string, _ext: string) => {
+  const handleSessionSelect = useCallback((id: string) => {
+    if (isEditMode && editContent !== fileContent?.content) {
+      pendingNavRef.current = () => doSessionSelect(id);
+      setShowUnsavedModal(true);
+    } else {
+      doSessionSelect(id);
+    }
+  }, [isEditMode, editContent, fileContent, doSessionSelect]);
+
+  const doFileSelect = useCallback(async (filePath: string, _ext: string) => {
     const id = ++fetchIdRef.current;
     setSelectedFilePath(filePath);
     setFileContent(null);
     setFileError(null);
     setFileLoading(true);
     setMdPreview(false);
+    setIsEditMode(false);
+    setEditContent('');
+    setOriginalMtimeMs(null);
     if (isNarrow) setIsTreeVisible(false);
     try {
       const content = await api.getFileContent(filePath);
-      if (fetchIdRef.current === id) setFileContent(content);
+      if (fetchIdRef.current === id) {
+        setFileContent(content);
+        setOriginalMtimeMs(content.mtimeMs);
+      }
     } catch (err) {
       if (fetchIdRef.current === id) {
         setFileError(err instanceof Error ? err.message : 'Failed to load file');
@@ -305,21 +331,32 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
     }
   }, [isNarrow]);
 
-  const showToast = useCallback((message: string) => {
+  const handleFileSelect = useCallback((filePath: string, ext: string) => {
+    if (isEditMode && editContent !== fileContent?.content) {
+      pendingNavRef.current = () => doFileSelect(filePath, ext);
+      setShowUnsavedModal(true);
+    } else {
+      doFileSelect(filePath, ext);
+    }
+  }, [isEditMode, editContent, fileContent, doFileSelect]);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToastMessage(message);
+    setToastType(type);
     setToastVisible(true);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToastVisible(false), 1800);
   }, []);
 
   const handleCopy = useCallback(() => {
-    if (!fileContent) return;
-    navigator.clipboard.writeText(fileContent.content).then(() => {
+    const text = isEditMode ? editContent : fileContent?.content;
+    if (text === undefined) return;
+    navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       showToast('Content copied');
     });
-  }, [fileContent, showToast]);
+  }, [isEditMode, editContent, fileContent, showToast]);
 
   const handleFileDoubleClick = useCallback((filePath: string) => {
     navigator.clipboard.writeText(filePath).then(() => showToast('File path copied'));
@@ -330,9 +367,86 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
     navigator.clipboard.writeText(selectedFilePath).then(() => showToast('File path copied'));
   }, [selectedFilePath, showToast]);
 
+  const handleEnterEdit = useCallback(() => {
+    if (!fileContent) return;
+    setEditContent(fileContent.content);
+    setIsEditMode(true);
+  }, [fileContent]);
+
+  const handleCancelEdit = useCallback(() => {
+    const isDirty = editContent !== fileContent?.content;
+    if (isDirty) {
+      pendingNavRef.current = () => {
+        setIsEditMode(false);
+        setEditContent('');
+      };
+      setShowUnsavedModal(true);
+    } else {
+      setIsEditMode(false);
+      setEditContent('');
+    }
+  }, [editContent, fileContent]);
+
+  const handleSave = useCallback(async (overwrite = false) => {
+    if (!selectedFilePath || !selectedSessionId) return;
+    setIsSaving(true);
+    try {
+      const result = await api.writeFile({
+        sessionId: selectedSessionId,
+        path: selectedFilePath,
+        content: editContent,
+        originalMtimeMs: overwrite ? undefined : (originalMtimeMs ?? undefined),
+      });
+      if (result.conflict) {
+        setShowConflictModal(true);
+        return;
+      }
+      if (!result.success) {
+        showToast(result.error ?? 'Save failed', 'error');
+        return;
+      }
+      // Update local state to reflect saved content
+      setOriginalMtimeMs(result.mtimeMs);
+      setFileContent(prev => prev ? { ...prev, content: editContent, size: result.size, mtimeMs: result.mtimeMs } : prev);
+      setIsEditMode(false);
+      showToast('File saved');
+    } catch {
+      showToast('Save failed — network error', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [selectedFilePath, selectedSessionId, editContent, originalMtimeMs, showToast]);
+
+  // Ctrl+S / Cmd+S to save; Escape to cancel
+  useEffect(() => {
+    if (!isEditMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSave();
+      } else if (e.key === 'Escape') {
+        e.stopPropagation();
+        handleCancelEdit();
+      }
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [isEditMode, handleSave, handleCancelEdit]);
+
+  // Warn on browser close when dirty
+  useEffect(() => {
+    const isDirty = isEditMode && editContent !== fileContent?.content;
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isEditMode, editContent, fileContent]);
+
   const selectedSession = sessions.find(s => s.id === selectedSessionId);
   const isSearchActive = searchQuery.trim().length > 0;
   const isMd = selectedFilePath?.toLowerCase().endsWith('.md') ?? false;
+  const isDirty = isEditMode && editContent !== fileContent?.content;
 
   const language = useMemo(
     () => selectedFilePath ? langFromPath(selectedFilePath) : undefined,
@@ -410,65 +524,142 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
               flex: 1,
             }}>
               {selectedFilePath.split('/').pop()}
+              {isDirty && <span style={{ color: 'var(--color-text-muted)', marginLeft: 4 }}>●</span>}
             </span>
-            {fileContent && (
+            {isEditMode ? (
+              /* Edit mode toolbar */
               <>
-                <span style={{
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--color-text-muted)',
-                  background: 'var(--color-bg-elevated)',
-                  padding: '2px 6px',
-                  borderRadius: 'var(--radius-sm)',
-                  fontFamily: 'var(--font-mono)',
-                  flexShrink: 0,
-                }}>
-                  {formatSize(fileContent.size)}
-                </span>
-                <Tooltip content="Copy file content" position="bottom">
+                <Tooltip content="Save (Ctrl+S)" position="bottom">
                   <button
-                    onClick={handleCopy}
+                    onClick={() => handleSave()}
+                    disabled={isSaving}
                     style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '2px',
                       display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'var(--color-accent)',
+                      border: 'none',
+                      cursor: isSaving ? 'not-allowed' : 'pointer',
+                      padding: '3px 8px',
                       borderRadius: 'var(--radius-sm)',
-                      color: copied ? 'var(--color-accent)' : 'var(--color-text-muted)',
-                      transition: 'color var(--transition-fast)',
+                      color: '#fff',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 600,
+                      opacity: isSaving ? 0.6 : 1,
                       flexShrink: 0,
                     }}
-                    onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = 'var(--color-text-primary)'; }}
-                    onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = 'var(--color-text-muted)'; }}
                   >
-                    {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.75} />}
+                    <Save size={12} strokeWidth={2} />
+                    {isSaving ? 'Saving…' : 'Save'}
                   </button>
                 </Tooltip>
-                {isMd && (
-                  <Tooltip content={mdPreview ? 'View raw' : 'Preview markdown'} position="bottom">
+                <Tooltip content="Cancel (Esc)" position="bottom">
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={isSaving}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'none',
+                      border: '1px solid var(--color-border-base)',
+                      cursor: 'pointer',
+                      padding: '3px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--color-text-secondary)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 500,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <XIcon size={12} strokeWidth={2} />
+                    Cancel
+                  </button>
+                </Tooltip>
+              </>
+            ) : (
+              /* View mode buttons */
+              fileContent && (
+                <>
+                  <span style={{
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text-muted)',
+                    background: 'var(--color-bg-elevated)',
+                    padding: '2px 6px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontFamily: 'var(--font-mono)',
+                    flexShrink: 0,
+                  }}>
+                    {formatSize(fileContent.size)}
+                  </span>
+                  <Tooltip content="Copy file content" position="bottom">
                     <button
-                      onClick={() => setMdPreview(p => !p)}
+                      onClick={handleCopy}
                       style={{
-                        background: mdPreview ? 'var(--color-accent-subtle)' : 'none',
+                        background: 'none',
                         border: 'none',
                         cursor: 'pointer',
                         padding: '2px',
                         display: 'inline-flex',
                         borderRadius: 'var(--radius-sm)',
-                        color: mdPreview ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                        color: copied ? 'var(--color-accent)' : 'var(--color-text-muted)',
                         transition: 'color var(--transition-fast)',
                         flexShrink: 0,
                       }}
-                      onMouseEnter={(e) => { if (!mdPreview) e.currentTarget.style.color = 'var(--color-text-primary)'; }}
-                      onMouseLeave={(e) => { if (!mdPreview) e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                      onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = 'var(--color-text-muted)'; }}
                     >
-                      {mdPreview ? <Code size={13} strokeWidth={1.75} /> : <BookOpen size={13} strokeWidth={1.75} />}
+                      {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.75} />}
                     </button>
                   </Tooltip>
-                )}
-              </>
+                  {isMd && (
+                    <Tooltip content={mdPreview ? 'View raw' : 'Preview markdown'} position="bottom">
+                      <button
+                        onClick={() => setMdPreview(p => !p)}
+                        style={{
+                          background: mdPreview ? 'var(--color-accent-subtle)' : 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '2px',
+                          display: 'inline-flex',
+                          borderRadius: 'var(--radius-sm)',
+                          color: mdPreview ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                          transition: 'color var(--transition-fast)',
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => { if (!mdPreview) e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                        onMouseLeave={(e) => { if (!mdPreview) e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                      >
+                        {mdPreview ? <Code size={13} strokeWidth={1.75} /> : <BookOpen size={13} strokeWidth={1.75} />}
+                      </button>
+                    </Tooltip>
+                  )}
+                  <Tooltip content={fileContent.truncated ? 'File too large to edit' : 'Edit file'} position="bottom">
+                    <button
+                      onClick={handleEnterEdit}
+                      disabled={fileContent.truncated}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: fileContent.truncated ? 'not-allowed' : 'pointer',
+                        padding: '2px',
+                        display: 'inline-flex',
+                        borderRadius: 'var(--radius-sm)',
+                        color: fileContent.truncated ? 'var(--color-text-disabled, var(--color-text-muted))' : 'var(--color-text-muted)',
+                        opacity: fileContent.truncated ? 0.4 : 1,
+                        transition: 'color var(--transition-fast)',
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => { if (!fileContent.truncated) e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                      onMouseLeave={(e) => { if (!fileContent.truncated) e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                    >
+                      <Pencil size={13} strokeWidth={1.75} />
+                    </button>
+                  </Tooltip>
+                </>
+              )
             )}
-            {isNarrow && selectedFilePath && (
+            {isNarrow && selectedFilePath && !isEditMode && (
               <Tooltip content="Copy file path" position="bottom">
                 <button
                   onClick={handleCopyFilePath}
@@ -493,7 +684,7 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
           </div>
 
           {/* Preview content */}
-          <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+          <div style={{ flex: 1, overflow: isEditMode ? 'hidden' : 'auto', position: 'relative', display: 'flex', flexDirection: 'column' }}>
             {fileLoading && (
               <div style={{
                 padding: '24px 16px',
@@ -555,7 +746,47 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
                     Showing first 512 KB — file truncated
                   </div>
                 )}
-                {isMd && mdPreview ? (
+                {isEditMode ? (
+                  <textarea
+                    autoFocus
+                    value={editContent}
+                    onChange={e => setEditContent(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        const start = e.currentTarget.selectionStart;
+                        const end = e.currentTarget.selectionEnd;
+                        const next = editContent.substring(0, start) + '  ' + editContent.substring(end);
+                        setEditContent(next);
+                        // Restore cursor after state update
+                        requestAnimationFrame(() => {
+                          const el = e.currentTarget;
+                          el.selectionStart = start + 2;
+                          el.selectionEnd = start + 2;
+                        });
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      width: '100%',
+                      minHeight: 0,
+                      margin: 0,
+                      padding: '16px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 'var(--text-sm)',
+                      lineHeight: 1.6,
+                      color: 'var(--color-text-primary)',
+                      background: 'var(--color-bg-code)',
+                      border: 'none',
+                      outline: 'none',
+                      resize: 'none',
+                      boxSizing: 'border-box',
+                      whiteSpace: 'pre',
+                      overflow: 'auto',
+                    }}
+                    spellCheck={false}
+                  />
+                ) : isMd && mdPreview ? (
                   <div style={{
                     padding: '16px 20px',
                     fontSize: 'var(--text-sm)',
@@ -894,6 +1125,147 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
           {filePreviewPanel}
         </>
       )}
+      {/* Unsaved changes modal */}
+      {showUnsavedModal && (
+        <div
+          onClick={() => setShowUnsavedModal(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(12,13,24,0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 10000,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--color-bg-header)',
+              border: '1px solid var(--color-border-base)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px',
+              maxWidth: '360px',
+              width: '90vw',
+              boxShadow: 'var(--shadow-float)',
+            }}
+          >
+            <div style={{ fontWeight: 600, fontSize: 'var(--text-md)', marginBottom: '8px', color: 'var(--color-text-primary)' }}>
+              Unsaved changes
+            </div>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', marginBottom: '20px' }}>
+              You have unsaved changes. Discard them?
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowUnsavedModal(false)}
+                style={{
+                  padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-border-base)',
+                  background: 'none', cursor: 'pointer',
+                  fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)',
+                }}
+              >
+                Keep editing
+              </button>
+              <button
+                onClick={() => {
+                  setShowUnsavedModal(false);
+                  pendingNavRef.current?.();
+                  pendingNavRef.current = null;
+                }}
+                style={{
+                  padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  background: 'var(--color-status-error, #f7768e)',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-sm)', fontWeight: 600,
+                  color: '#fff',
+                }}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conflict modal */}
+      {showConflictModal && (
+        <div
+          onClick={() => setShowConflictModal(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(12,13,24,0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 10000,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--color-bg-header)',
+              border: '1px solid var(--color-border-base)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px',
+              maxWidth: '400px',
+              width: '90vw',
+              boxShadow: 'var(--shadow-float)',
+            }}
+          >
+            <div style={{ fontWeight: 600, fontSize: 'var(--text-md)', marginBottom: '8px', color: 'var(--color-text-primary)' }}>
+              File modified externally
+            </div>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', marginBottom: '20px' }}>
+              This file was changed since you started editing. What would you like to do?
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setShowConflictModal(false)}
+                style={{
+                  padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-border-base)',
+                  background: 'none', cursor: 'pointer',
+                  fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowConflictModal(false);
+                  if (selectedFilePath) doFileSelect(selectedFilePath, '');
+                }}
+                style={{
+                  padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-border-base)',
+                  background: 'none', cursor: 'pointer',
+                  fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)',
+                }}
+              >
+                Reload file
+              </button>
+              <button
+                onClick={() => {
+                  setShowConflictModal(false);
+                  handleSave(true);
+                }}
+                style={{
+                  padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  background: 'var(--color-status-error, #f7768e)',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-sm)', fontWeight: 600,
+                  color: '#fff',
+                }}
+              >
+                Overwrite
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toastVisible && (
         <div style={{
@@ -901,8 +1273,8 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
           bottom: '24px',
           left: '50%',
           transform: 'translateX(-50%)',
-          background: 'var(--color-bg-success, #d4f5e2)',
-          border: '1px solid var(--color-border-success, #48c774)',
+          background: toastType === 'error' ? 'rgba(247,118,142,0.15)' : 'var(--color-bg-success, #d4f5e2)',
+          border: `1px solid ${toastType === 'error' ? 'var(--color-status-error, #f7768e)' : 'var(--color-border-success, #48c774)'}`,
           borderRadius: 'var(--radius-md)',
           padding: '7px 14px',
           fontSize: 'var(--text-sm)',
@@ -916,8 +1288,13 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
           alignItems: 'center',
           gap: '6px',
         }}>
-          <Check size={13} strokeWidth={2.5} style={{ color: 'var(--color-text-success, #1a7a40)', flexShrink: 0 }} />
-          <span style={{ color: 'var(--color-text-success, #1a7a40)' }}>{toastMessage}</span>
+          {toastType === 'error'
+            ? <XIcon size={13} strokeWidth={2.5} style={{ color: 'var(--color-status-error, #f7768e)', flexShrink: 0 }} />
+            : <Check size={13} strokeWidth={2.5} style={{ color: 'var(--color-text-success, #1a7a40)', flexShrink: 0 }} />
+          }
+          <span style={{ color: toastType === 'error' ? 'var(--color-status-error, #f7768e)' : 'var(--color-text-success, #1a7a40)' }}>
+            {toastMessage}
+          </span>
         </div>
       )}
     </div>

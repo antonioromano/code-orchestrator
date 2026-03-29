@@ -179,6 +179,22 @@ export interface FileContentResponse {
   mimeType: string;
   size: number;
   truncated: boolean;
+  mtimeMs: number;
+}
+
+export interface WriteFileRequest {
+  sessionId: string;
+  path: string;
+  content: string;
+  originalMtimeMs?: number;
+}
+
+export interface WriteFileResponse {
+  success: boolean;
+  size: number;
+  mtimeMs: number;
+  error?: string;
+  conflict?: boolean;
 }
 
 export interface FileSearchResult {

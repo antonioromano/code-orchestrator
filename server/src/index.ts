@@ -80,7 +80,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 app.use('/api/sessions', createSessionRoutes(sessionManager, orderStore, configStore));
-app.use('/api/fs', createFilesystemRoutes());
+app.use('/api/fs', createFilesystemRoutes(sessionManager));
 app.use('/api', createGitRoutes(sessionManager));
 app.use('/api/ngrok', createNgrokRoutes(ngrokService, authService));
 app.use('/api/auth', createAuthRoutes(authService));
