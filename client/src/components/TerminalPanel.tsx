@@ -4,7 +4,7 @@ import type { Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Maximize2, Minimize2, GitCompare, X, Move, RotateCcw } from 'lucide-react';
+import { Maximize2, Minimize2, Minus, GitCompare, X, Move, RotateCcw } from 'lucide-react';
 import { useTerminal } from '../hooks/useTerminal.js';
 import { StatusDot } from './primitives/index.js';
 import { Badge } from './primitives/index.js';
@@ -21,6 +21,7 @@ interface TerminalPanelProps {
   onRestart?: (id: string) => void;
   onFocus?: (id: string) => void;
   onUnfocus?: () => void;
+  onCollapse?: (id: string) => void;
   onToggleDiff?: (id: string) => void;
   isDiffOpen?: boolean;
 }
@@ -41,7 +42,7 @@ const QUICK_ACTIONS = [
   { label: 'Tab', data: '\t', title: 'Tab' },
 ];
 
-export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onFocus, onUnfocus, onToggleDiff, isDiffOpen }: TerminalPanelProps) {
+export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onFocus, onUnfocus, onCollapse, onToggleDiff, isDiffOpen }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   useTerminal(containerRef, { sessionId: session.id, socket, theme });
 
@@ -208,6 +209,20 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <Maximize2 size={14} strokeWidth={1.75} />
+              </button>
+            </Tooltip>
+          )}
+
+          {onCollapse && (
+            <Tooltip content="Minimize to chip" position="top">
+              <button
+                onClick={() => onCollapse(session.id)}
+                style={iconBtnStyle}
+                aria-label="Minimize session"
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-surface)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <Minus size={14} strokeWidth={1.75} />
               </button>
             </Tooltip>
           )}
