@@ -20,8 +20,19 @@ import { useGitDiff } from '../hooks/useGitDiff.js';
 import { Tooltip } from './primitives/index.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
 import { SessionSidebar } from './SessionSidebar.js';
+import { CollapsedChipRow } from './CollapsedChipRow.js';
+import { useCollapsedSessions } from '../hooks/useCollapsedSessions.js';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+/** Keeps the client in a session's socket room so status events still arrive. */
+function CollapsedRoomKeeper({ sessionId, socket }: { sessionId: string; socket: TypedSocket }) {
+  useEffect(() => {
+    socket.emit('session:join', sessionId);
+    return () => { socket.emit('session:leave', sessionId); };
+  }, [sessionId, socket]);
+  return null;
+}
 
 interface DiffState {
   isOpen: boolean;
@@ -127,12 +138,23 @@ export function Dashboard({
   const isFocused = !!focusedSessionId;
   const focusedSession = isFocused ? sessions.find((s) => s.id === focusedSessionId) : null;
 
+  const { isCollapsed, collapse, uncollapse } = useCollapsedSessions();
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
   );
 
-  const groups = useMemo(() => groupSessionsByFolder(sessions), [sessions]);
+  const visibleSessions = useMemo(
+    () => sessions.filter((s) => !isCollapsed(s.id)),
+    [sessions, isCollapsed],
+  );
+  const collapsedSessions = useMemo(
+    () => sessions.filter((s) => isCollapsed(s.id)),
+    [sessions, isCollapsed],
+  );
+
+  const groups = useMemo(() => groupSessionsByFolder(visibleSessions), [visibleSessions]);
   const groupKeys = useMemo(() => Array.from(groups.keys()), [groups]);
   const groupSortableIds = useMemo(() => groupKeys.map((k) => `group::${k}`), [groupKeys]);
 
@@ -196,15 +218,19 @@ export function Dashboard({
       const activeSessionId = activeId.replace('session::', '');
       const overSessionId = overId.replace('session::', '');
 
-      const currentOrder = sessions.map((s) => s.id);
-      const oldIndex = currentOrder.indexOf(activeSessionId);
-      const newIndex = currentOrder.indexOf(overSessionId);
+      // Reorder among visible sessions, then merge collapsed sessions back at end
+      const visibleOrder = visibleSessions.map((s) => s.id);
+      const oldIndex = visibleOrder.indexOf(activeSessionId);
+      const newIndex = visibleOrder.indexOf(overSessionId);
       if (oldIndex === -1 || newIndex === -1) return;
 
-      const newOrder = [...currentOrder];
-      newOrder.splice(oldIndex, 1);
-      newOrder.splice(newIndex, 0, activeSessionId);
-      onReorder(newOrder);
+      const newVisibleOrder = [...visibleOrder];
+      newVisibleOrder.splice(oldIndex, 1);
+      newVisibleOrder.splice(newIndex, 0, activeSessionId);
+
+      // Append collapsed session IDs at the end (they keep their relative order)
+      const collapsedOrder = collapsedSessions.map((s) => s.id);
+      onReorder([...newVisibleOrder, ...collapsedOrder]);
     }
 
     triggerRefit();
@@ -288,7 +314,7 @@ export function Dashboard({
   }
 
   return (
-    <div className="dashboard-outer" style={{ position: 'relative', height: 'calc(100vh - var(--header-height) - var(--nav-tabs-height))', overflow: 'hidden' }}>
+    <div className="dashboard-outer" style={{ position: 'relative', height: 'calc(100vh - var(--header-height) - var(--nav-tabs-height))', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       {/* Focus overlay */}
       {isFocused && focusedSession && (
         <div
@@ -550,40 +576,72 @@ export function Dashboard({
         </div>
       )}
 
+      {/* Room keepers — maintain socket room membership for collapsed sessions so status events keep flowing */}
+      {collapsedSessions.map((s) => (
+        <CollapsedRoomKeeper key={s.id} sessionId={s.id} socket={socket} />
+      ))}
+
+      {/* Collapsed chip row — shown above grid when sessions are minimized */}
+      {!isFocused && collapsedSessions.length > 0 && (
+        <CollapsedChipRow
+          sessions={collapsedSessions}
+          onUncollapse={(id) => { uncollapse(id); triggerRefit(); }}
+        />
+      )}
+
       {/* Grouped grid view */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={groupSortableIds} strategy={verticalListSortingStrategy}>
-          <div
-            className="dashboard-grid"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(auto-fit, minmax(min(500px, 100%), 1fr))`,
-              gap: 'var(--space-2)',
-              padding: 'var(--space-2)',
-              height: '100%',
-              overflow: 'hidden',
-              visibility: isFocused ? 'hidden' : 'visible',
-              pointerEvents: isFocused ? 'none' : 'auto',
-            }}
-          >
-            {groupKeys.map((folderPath) => (
-              <SessionGroup
-                key={folderPath}
-                folderPath={folderPath}
-                sessions={groups.get(folderPath)!}
-                socket={socket}
-                theme={theme}
-                onDeleteSession={onDeleteSession}
-                onRestartSession={onRestartSession}
-                onCloneSession={onCloneSession}
-                onFocusSession={onFocusSession}
-                onToggleDiff={onToggleDiff}
-                focusedSessionId={focusedSessionId}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={groupSortableIds} strategy={verticalListSortingStrategy}>
+            <div
+              className="dashboard-grid"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(auto-fit, minmax(min(500px, 100%), 1fr))`,
+                gap: 'var(--space-2)',
+                padding: 'var(--space-2)',
+                height: '100%',
+                overflow: 'hidden',
+                visibility: isFocused ? 'hidden' : 'visible',
+                pointerEvents: isFocused ? 'none' : 'auto',
+              }}
+            >
+              {visibleSessions.length === 0 && collapsedSessions.length > 0 ? (
+                <div
+                  style={{
+                    gridColumn: '1 / -1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--color-text-muted)',
+                    fontSize: 'var(--text-md)',
+                    gap: 'var(--space-2)',
+                  }}
+                >
+                  All sessions minimized — click a chip above to restore
+                </div>
+              ) : (
+                groupKeys.map((folderPath) => (
+                  <SessionGroup
+                    key={folderPath}
+                    folderPath={folderPath}
+                    sessions={groups.get(folderPath)!}
+                    socket={socket}
+                    theme={theme}
+                    onDeleteSession={onDeleteSession}
+                    onRestartSession={onRestartSession}
+                    onCloneSession={onCloneSession}
+                    onFocusSession={onFocusSession}
+                    onCollapse={collapse}
+                    onToggleDiff={onToggleDiff}
+                    focusedSessionId={focusedSessionId}
+                  />
+                ))
+              )}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
     </div>
   );
 }

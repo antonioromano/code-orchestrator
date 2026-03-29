@@ -22,6 +22,7 @@ interface SessionGroupProps {
   onCloneSession: (folderPath: string, agentType?: string) => void;
   onFocusSession?: (id: string) => void;
   onToggleDiff?: (id: string) => void;
+  onCollapse?: (id: string) => void;
   focusedSessionId?: string | null;
 }
 
@@ -35,6 +36,7 @@ export function SessionGroup({
   onCloneSession,
   onFocusSession,
   onToggleDiff,
+  onCollapse,
   focusedSessionId,
 }: SessionGroupProps) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -174,6 +176,7 @@ export function SessionGroup({
                 onDelete={onDeleteSession}
                 onRestart={onRestartSession}
                 onFocus={onFocusSession}
+                onCollapse={onCollapse}
                 onToggleDiff={onToggleDiff}
               />
             </ErrorBoundary>
