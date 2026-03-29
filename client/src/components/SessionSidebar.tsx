@@ -56,6 +56,7 @@ export function SessionSidebar({ sessions, activeSessionId, onSelectSession, hea
             <button
               key={s.id}
               onClick={() => onSelectSession(s.id)}
+              aria-current={isActive ? 'true' : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',

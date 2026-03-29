@@ -22,7 +22,7 @@ import { NavTabs } from './components/NavTabs.js';
 import type { AppTab } from './components/NavTabs.js';
 import { MobileBottomNav } from './components/MobileBottomNav.js';
 import { api, setToken } from './services/api.js';
-import { WifiOff } from 'lucide-react';
+import { WifiOff, Settings, Maximize2, Minimize2, Globe, ArrowUpCircle, Sun, Moon, Loader2 } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 
 interface DiffState {
@@ -83,7 +83,18 @@ export default function App() {
     return () => window.removeEventListener('auth:unauthorized', handler);
   }, []);
 
-  if (!authChecked) return null;
+  if (!authChecked) return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      background: 'var(--color-bg-base)',
+    }}>
+      <Loader2 size={24} style={{ color: 'var(--color-text-muted)', animation: 'spin 1s linear infinite' }} />
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 
   if (authRequired && !authenticated) {
     return (
@@ -318,6 +329,7 @@ function AppInner() {
 
   return (
     <>
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       <header
         style={{
           display: 'flex',
@@ -350,14 +362,14 @@ function AppInner() {
           {/* Settings — hidden on mobile (moved to bottom nav) */}
           <span className="header-settings-btn">
             <HeaderButton onClick={() => setShowSettingsModal(true)} title="Settings">
-              {'\u2699'}
+              <Settings size={15} strokeWidth={1.75} />
             </HeaderButton>
           </span>
 
           {/* Fullscreen — hidden on mobile (Fullscreen API unsupported on iOS) */}
           <span className="header-fullscreen-btn">
             <HeaderButton onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
-              {isFullscreen ? '\u2716' : '\u26F6'}
+              {isFullscreen ? <Minimize2 size={15} strokeWidth={1.75} /> : <Maximize2 size={15} strokeWidth={1.75} />}
             </HeaderButton>
           </span>
 
@@ -367,7 +379,7 @@ function AppInner() {
             title={ngrok.status?.tunnelStatus === 'connected' ? `Remote: ${ngrok.status.publicUrl}` : 'Remote Access'}
             style={{ position: 'relative', borderColor: ngrokBorderColor, color: ngrokColor }}
           >
-            {'\uD83C\uDF10'}
+            <Globe size={15} strokeWidth={1.75} />
             {ngrok.status?.tunnelStatus === 'connected' && (
               <span style={{
                 position: 'absolute',
@@ -389,7 +401,7 @@ function AppInner() {
               title={`Update available: v${updateStatus.latestVersion}`}
               style={{ position: 'relative', borderColor: 'var(--color-success)', color: 'var(--color-success)' }}
             >
-              {'\u2B06'}
+              <ArrowUpCircle size={15} strokeWidth={1.75} />
               <span style={{
                 position: 'absolute',
                 top: '-3px',
@@ -404,8 +416,8 @@ function AppInner() {
           )}
 
           {/* Theme toggle */}
-          <HeaderButton onClick={toggleTheme} title="Toggle theme">
-            {isDark ? '\u2600' : '\u263E'}
+          <HeaderButton onClick={toggleTheme} title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}>
+            {isDark ? <Sun size={15} strokeWidth={1.75} /> : <Moon size={15} strokeWidth={1.75} />}
           </HeaderButton>
 
           {/* New Session */}
@@ -419,8 +431,8 @@ function AppInner() {
               fontSize: 'var(--text-md)',
               border: '1px solid transparent',
               borderRadius: 'var(--radius-md)',
-              background: 'linear-gradient(135deg, #aec6ff 0%, #7aa2f7 100%)',
-              color: '#002e6b',
+              background: 'var(--color-btn-primary-bg)',
+              color: 'var(--color-btn-primary-text)',
               cursor: 'pointer',
               fontWeight: 600,
               gap: '6px',
@@ -435,19 +447,22 @@ function AppInner() {
       </header>
 
       {!socketConnected && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-          padding: '6px 16px',
-          background: 'var(--color-warning-subtle, rgba(255,180,0,0.12))',
-          borderBottom: '1px solid var(--color-warning, #f0a500)',
-          color: 'var(--color-warning, #f0a500)',
-          fontSize: 'var(--text-sm)',
-          fontWeight: 500,
-          flexShrink: 0,
-        }}>
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            padding: '6px 16px',
+            background: 'var(--color-warning-subtle, rgba(255,180,0,0.12))',
+            borderBottom: '1px solid var(--color-warning, #f0a500)',
+            color: 'var(--color-warning, #f0a500)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 500,
+            flexShrink: 0,
+          }}
+        >
           <WifiOff size={13} strokeWidth={2} />
           Connection lost — reconnecting…
         </div>
@@ -459,56 +474,66 @@ function AppInner() {
         sessionCount={sessions.length}
       />
 
+      <div id="main-content" style={{ display: 'contents' }}>
       {activeTab === 'sessions' && (
         <ErrorBoundary variant="tab" label="Sessions">
-          <Dashboard
-            sessions={orderedSessions}
-            socket={socket}
-            theme={theme}
-            onDeleteSession={handleDelete}
-            onRestartSession={handleRestart}
-            onCreateSession={handleNewSession}
-            onCloneSession={handleClone}
-            onReorder={reorder}
-            focusedSessionId={focusedSessionId}
-            onFocusSession={handleFocus}
-            onUnfocusSession={handleUnfocus}
-            getDiffState={getDiffState}
-            onToggleDiff={handleToggleDiff}
-            onToggleDiffFullscreen={handleToggleDiffFullscreen}
-            onCloseDiff={handleCloseDiff}
-          />
+          <div role="tabpanel" id="tabpanel-sessions" aria-labelledby="tab-sessions" style={{ display: 'contents' }}>
+            <Dashboard
+              sessions={orderedSessions}
+              socket={socket}
+              theme={theme}
+              onDeleteSession={handleDelete}
+              onRestartSession={handleRestart}
+              onCreateSession={handleNewSession}
+              onCloneSession={handleClone}
+              onReorder={reorder}
+              focusedSessionId={focusedSessionId}
+              onFocusSession={handleFocus}
+              onUnfocusSession={handleUnfocus}
+              getDiffState={getDiffState}
+              onToggleDiff={handleToggleDiff}
+              onToggleDiffFullscreen={handleToggleDiffFullscreen}
+              onCloseDiff={handleCloseDiff}
+            />
+          </div>
         </ErrorBoundary>
       )}
-      {activeTab === 'git-diff' && sessions.length > 0 && (
-        <ErrorBoundary variant="tab" label="Git Diff">
-          <GlobalGitDiffView
-            sessionId={focusedSessionId ?? sessions[0].id}
-            sessionStatus={sessions.find(s => s.id === (focusedSessionId ?? sessions[0].id))?.status ?? 'idle'}
-            theme={theme}
-            sessions={sessions}
-            currentSessionId={focusedSessionId ?? sessions[0].id}
-            onSelectSession={setFocusedSessionId}
-          />
-        </ErrorBoundary>
-      )}
-      {activeTab === 'git-diff' && sessions.length === 0 && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
-          color: 'var(--color-text-muted)',
-          fontSize: 'var(--text-md)',
-        }}>
-          No sessions — create a session to view git diff
+      {activeTab === 'git-diff' && (
+        <div role="tabpanel" id="tabpanel-git-diff" aria-labelledby="tab-git-diff" style={{ display: 'contents' }}>
+          {sessions.length > 0 ? (
+            <ErrorBoundary variant="tab" label="Git Diff">
+              <GlobalGitDiffView
+                sessionId={focusedSessionId ?? sessions[0].id}
+                sessionStatus={sessions.find(s => s.id === (focusedSessionId ?? sessions[0].id))?.status ?? 'idle'}
+                theme={theme}
+                sessions={sessions}
+                currentSessionId={focusedSessionId ?? sessions[0].id}
+                onSelectSession={setFocusedSessionId}
+              />
+            </ErrorBoundary>
+          ) : (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
+              color: 'var(--color-text-muted)',
+              fontSize: 'var(--text-md)',
+            }}>
+              No sessions — create a session to view git diff
+            </div>
+          )}
         </div>
       )}
       {activeTab === 'explorer' && (
-        <ErrorBoundary variant="tab" label="Explorer">
-          <ExplorerPanel sessions={orderedSessions} theme={theme} onSelectSession={handleFocus} />
-        </ErrorBoundary>
+        <div role="tabpanel" id="tabpanel-explorer" aria-labelledby="tab-explorer" style={{ display: 'contents' }}>
+          <ErrorBoundary variant="tab" label="Explorer">
+            <ExplorerPanel sessions={orderedSessions} theme={theme} onSelectSession={handleFocus} />
+          </ErrorBoundary>
+        </div>
       )}
+
+      </div>
 
       {showCreateModal && (
         <CreateSessionModal
@@ -584,6 +609,10 @@ function AppInner() {
           }}
         >
           <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            aria-describedby="delete-dialog-desc"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: 'var(--color-bg-modal)',
@@ -595,10 +624,10 @@ function AppInner() {
               border: '1px solid var(--color-border-base)',
             }}
           >
-            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--text-xl)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            <h3 id="delete-dialog-title" style={{ margin: '0 0 8px', fontSize: 'var(--text-xl)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
               Close Session?
             </h3>
-            <p style={{ margin: '0 0 20px', fontSize: 'var(--text-md)', color: 'var(--color-text-secondary)' }}>
+            <p id="delete-dialog-desc" style={{ margin: '0 0 20px', fontSize: 'var(--text-md)', color: 'var(--color-text-secondary)' }}>
               The Claude process will be terminated.
             </p>
             <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
@@ -620,6 +649,7 @@ function AppInner() {
                 Cancel
               </button>
               <button
+                autoFocus
                 onClick={handleDeleteConfirm}
                 style={{
                   padding: '8px 16px',
@@ -709,6 +739,7 @@ function HeaderButton({
     <button
       onClick={onClick}
       title={title}
+      aria-label={title}
       style={{
         background: 'none',
         border: '1px solid var(--color-border-subtle)',

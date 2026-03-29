@@ -20,7 +20,7 @@
   --radius-md:   4px;
   --radius-lg:   8px;
   --radius-xl:  12px;
-  --radius-pill: 10px;
+  --radius-pill: 9999px;
 
   /* === Z-INDEX SCALE === */
   --z-modal:     100;
@@ -89,6 +89,10 @@
   --color-warning:          #a06800;
   --color-warning-bg:       rgba(180, 120, 0, 0.07);
   --color-warning-border:   #c08000;
+
+  /* === PRIMARY BUTTON (theme-aware) === */
+  --color-btn-primary-bg:   linear-gradient(135deg, #4a7fe0 0%, #193c71 100%);
+  --color-btn-primary-text: #ffffff;
 }
 
 [data-theme="dark"] {
@@ -124,6 +128,19 @@
   --color-warning:          #e0af68;
   --color-warning-bg:       rgba(224, 175, 104, 0.08);
   --color-warning-border:   #e0af68;
+
+  /* === PRIMARY BUTTON (dark theme) === */
+  --color-btn-primary-bg:   linear-gradient(135deg, #aec6ff 0%, #7aa2f7 100%);
+  --color-btn-primary-text: #002e6b;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ── Global styles that depend on tokens ── */

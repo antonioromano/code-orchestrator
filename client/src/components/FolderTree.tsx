@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { DirectoryEntry } from '@remote-orchestrator/shared';
 import { api } from '../services/api.js';
 
@@ -120,13 +121,18 @@ export function FolderTree({ onSelect }: FolderTreeProps) {
               style={{
                 width: '18px',
                 flexShrink: 0,
-                textAlign: 'center',
-                fontSize: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 color: 'var(--color-text-muted)',
                 cursor: entry.hasChildren ? 'pointer' : 'default',
               }}
             >
-              {isLoading ? '...' : entry.hasChildren ? (isExpanded ? '\u25BC' : '\u25B6') : ''}
+              {isLoading ? '…' : entry.hasChildren
+                ? (isExpanded
+                    ? <ChevronDown size={11} strokeWidth={2} />
+                    : <ChevronRight size={11} strokeWidth={2} />)
+                : null}
             </span>
             <span style={{ marginLeft: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {entry.name}

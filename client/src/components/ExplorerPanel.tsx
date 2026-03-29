@@ -32,7 +32,7 @@ import dockerLang from 'react-syntax-highlighter/dist/esm/languages/prism/docker
 import makefileLang from 'react-syntax-highlighter/dist/esm/languages/prism/makefile';
 import { syntaxTheme } from '../utils/syntaxTheme';
 import { langFromPath } from '../utils/langFromPath';
-import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon } from 'lucide-react';
+import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon, PanelLeft, PanelLeftClose } from 'lucide-react';
 import type { SessionInfo, FileContentResponse, FileSearchResult } from '@remote-orchestrator/shared';
 import { ExplorerFolderTree } from './ExplorerFolderTree.js';
 import { SessionSidebar } from './SessionSidebar.js';
@@ -969,7 +969,9 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
                 flexShrink: 0,
               }}
             >
-              {isTreeVisible ? '\u2304' : '\u2261'}
+              {isTreeVisible
+                ? <PanelLeftClose size={15} strokeWidth={1.75} />
+                : <PanelLeft size={15} strokeWidth={1.75} />}
             </button>
           </div>
 

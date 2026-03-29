@@ -24,6 +24,8 @@ interface NavTabsProps {
 export function NavTabs({ activeTab, onTabChange, sessionCount }: NavTabsProps) {
   return (
     <div
+      role="tablist"
+      aria-label="Main navigation"
       style={{
         display: 'flex',
         alignItems: 'stretch',
@@ -41,6 +43,10 @@ export function NavTabs({ activeTab, onTabChange, sessionCount }: NavTabsProps) 
         return (
           <button
             key={tab.id}
+            role="tab"
+            aria-selected={isActive}
+            aria-controls={`tabpanel-${tab.id}`}
+            id={`tab-${tab.id}`}
             onClick={() => !tab.disabled && onTabChange(tab.id)}
             disabled={tab.disabled}
             style={{

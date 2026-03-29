@@ -116,12 +116,13 @@ export function CreateSessionModal({ onClose, onCreate, theme, initialFolderPath
         <form id="create-session-form" onSubmit={handleSubmit}>
           {/* Folder */}
           <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label style={labelStyle}>Project Folder</label>
+            <label htmlFor="session-folder-btn" style={labelStyle}>Project Folder</label>
 
             {!folderPath ? (
               <>
                 <button
                   type="button"
+                  id="session-folder-btn"
                   onClick={handlePickFolder}
                   disabled={picking}
                   style={{
@@ -304,8 +305,9 @@ export function CreateSessionModal({ onClose, onCreate, theme, initialFolderPath
 
           {/* Name */}
           <div style={{ marginBottom: 'var(--space-5)' }}>
-            <label style={labelStyle}>Session Name (optional)</label>
+            <label htmlFor="session-name" style={labelStyle}>Session Name (optional)</label>
             <input
+              id="session-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -347,6 +349,7 @@ const inputStyle: React.CSSProperties = {
 function ErrorBanner({ message }: { message: string }) {
   return (
     <div
+      role="alert"
       style={{
         marginBottom: 'var(--space-4)',
         padding: '8px 12px',

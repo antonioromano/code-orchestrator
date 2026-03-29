@@ -119,8 +119,9 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
     >
       {/* Default Agent */}
       <section style={{ marginBottom: 'var(--space-6)' }}>
-        <label style={sectionLabel}>Default Agent</label>
+        <label htmlFor="settings-default-agent" style={sectionLabel}>Default Agent</label>
         <select
+          id="settings-default-agent"
           value={defaultAgent}
           onChange={(e) => setDefaultAgent(e.target.value)}
           style={selectStyle}
@@ -356,6 +357,7 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
 
       {error && (
         <div
+          role="alert"
           style={{
             marginBottom: 'var(--space-4)',
             padding: '8px 12px',

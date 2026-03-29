@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import type parseDiff from 'parse-diff';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { DiffHunk } from './DiffHunk.js';
 import { TriStateCheckbox } from './primitives/index.js';
 import type { FileSelection, FileMeta, TriState } from '../hooks/useCommitMode.js';
@@ -93,13 +94,15 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
         )}
         <span
           style={{
-            fontSize: '11px',
-            color: 'var(--color-text-muted)',
+            display: 'inline-flex',
+            alignItems: 'center',
             width: '12px',
-            textAlign: 'center',
+            color: 'var(--color-text-muted)',
           }}
         >
-          {expanded ? '\u25BC' : '\u25B6'}
+          {expanded
+            ? <ChevronDown size={12} strokeWidth={2} />
+            : <ChevronRight size={12} strokeWidth={2} />}
         </span>
         <span
           style={{

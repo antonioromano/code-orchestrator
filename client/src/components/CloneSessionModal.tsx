@@ -119,8 +119,9 @@ export function CloneSessionModal({
         {/* Agent */}
         {agents.length > 0 && (
           <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label style={labelStyle}>Agent</label>
+            <label htmlFor="clone-agent-select" style={labelStyle}>Agent</label>
             <select
+              id="clone-agent-select"
               value={agentType}
               onChange={(e) => setAgentType(e.target.value)}
               style={selectStyle}
@@ -199,6 +200,7 @@ export function CloneSessionModal({
 
         {error && (
           <div
+            role="alert"
             style={{
               marginBottom: 'var(--space-4)',
               padding: '8px 12px',

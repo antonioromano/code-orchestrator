@@ -2,6 +2,25 @@
   box-sizing: border-box;
 }
 
+/* Skip to main content link (screen-reader / keyboard accessibility) */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 8px;
+  z-index: 9999;
+  padding: 8px 16px;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.1s;
+}
+.skip-link:focus {
+  top: 0;
+}
+
 body {
   margin: 0;
   padding: 0;
