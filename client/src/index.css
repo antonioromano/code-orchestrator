@@ -63,7 +63,7 @@ body {
   transition: opacity 0.2s ease;
 }
 
-.dashboard-grid:focus-within .terminal-panel:focus-within::after {
+.terminal-panel:focus-within::after {
   opacity: 0;
 }
 

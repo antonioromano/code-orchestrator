@@ -1,4 +1,4 @@
-# Code Orchestrator `v0.2.2`
+# Code Orchestrator `v0.2.3`
 
 A web-based dashboard for managing multiple AI coding agent sessions simultaneously. Spawn [Claude Code](https://claude.ai/code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), or [OpenAI Codex](https://github.com/openai/codex) processes via pseudo-terminals, stream their I/O to browser-based terminals, and monitor session state in real time.
 

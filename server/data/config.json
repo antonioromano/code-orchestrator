@@ -1,4 +1,13 @@
 {
   "defaultAgent": "claude",
-  "customAgents": []
+  "customAgents": [],
+  "agentFlags": {
+    "claude": [
+      {
+        "id": "a2abd8bf-99e3-401f-b5b8-f263a4b1005d",
+        "value": "--enable-auto-mode",
+        "enabled": false
+      }
+    ]
+  }
 }
