@@ -251,8 +251,12 @@ export const api = {
     return res.json();
   },
 
-  applyUpdate: async (): Promise<UpdateApplyResponse> => {
-    const res = await authFetch(`${API_BASE}/update/apply`, { method: 'POST' });
+  applyUpdate: async (force?: boolean): Promise<UpdateApplyResponse> => {
+    const res = await authFetch(`${API_BASE}/update/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: force ?? false }),
+    });
     if (!res.ok) {
       const err = await res.json() as { error?: string };
       throw new Error(err.error || 'Failed to apply update');

@@ -13,13 +13,20 @@ interface UpdateModalProps {
 export function UpdateModal({ status, onClose }: UpdateModalProps) {
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
 
-  const handleApply = async () => {
+  const handleApply = async (force = false) => {
     setApplying(true);
     setError(null);
+    if (!force) setWarning(null);
     try {
-      await api.applyUpdate();
+      const result = await api.applyUpdate(force);
+      if (result.requiresConfirmation) {
+        setWarning(result.warning ?? 'You have local changes. Do you want to continue anyway?');
+        setApplying(false);
+        return;
+      }
       setApplied(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to apply update');
@@ -29,10 +36,17 @@ export function UpdateModal({ status, onClose }: UpdateModalProps) {
 
   const footer = applied ? (
     <Button variant="secondary" onClick={onClose}>Close</Button>
+  ) : warning ? (
+    <>
+      <Button variant="secondary" onClick={onClose} disabled={applying}>Cancel</Button>
+      <Button variant="primary" onClick={() => handleApply(true)} loading={applying} disabled={applying}>
+        Confirm and Continue
+      </Button>
+    </>
   ) : (
     <>
       <Button variant="secondary" onClick={onClose} disabled={applying}>Cancel</Button>
-      <Button variant="primary" onClick={handleApply} loading={applying} disabled={applying}>
+      <Button variant="primary" onClick={() => handleApply()} loading={applying} disabled={applying}>
         Update Now
       </Button>
     </>
@@ -92,6 +106,20 @@ export function UpdateModal({ status, onClose }: UpdateModalProps) {
             fontSize: 'var(--text-sm)',
           }}>
             <strong>Update applied!</strong> Installing dependencies and restarting — the page will reconnect automatically.
+          </div>
+        )}
+
+        {/* Warning state (local changes) */}
+        {warning && (
+          <div style={{
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--color-warning-subtle, rgba(255,180,0,0.12))',
+            border: '1px solid var(--color-warning, #f0a500)',
+            color: 'var(--color-warning, #f0a500)',
+            fontSize: 'var(--text-sm)',
+          }}>
+            ⚠️ {warning}
           </div>
         )}
 

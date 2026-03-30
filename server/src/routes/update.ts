@@ -11,9 +11,14 @@ export function createUpdateRoutes(updateService: UpdateService): Router {
   });
 
   // Applies the update: guards dirty tree, runs git pull, exits process
-  router.post('/apply', async (_req: Request, res: Response) => {
-    const result = await updateService.applyUpdate();
+  router.post('/apply', async (req: Request, res: Response) => {
+    const { force } = req.body as { force?: boolean };
+    const result = await updateService.applyUpdate(force);
     if (!result.success) {
+      if (result.requiresConfirmation) {
+        res.json({ success: false, warning: result.warning, requiresConfirmation: true });
+        return;
+      }
       const status = result.error === 'Update already in progress' ? 409 : 400;
       res.status(status).json({ error: result.error });
       return;

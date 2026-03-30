@@ -88,6 +88,8 @@ export interface UpdateStatus {
 export interface UpdateApplyResponse {
   success: boolean;
   error?: string;
+  warning?: string;
+  requiresConfirmation?: boolean;
 }
 
 export type NgrokTunnelStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

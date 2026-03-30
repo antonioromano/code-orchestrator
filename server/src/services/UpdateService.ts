@@ -17,14 +17,14 @@ const REPO_BRANCH = 'master';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const CHECK_COOLDOWN_MS = 60 * 1000; // 60 seconds between on-demand checks
 
-const CURRENT_VERSION = (() => {
+function getCurrentVersion(): string {
   try {
     const pkg = JSON.parse(readFileSync(ROOT_PACKAGE_JSON, 'utf-8')) as { version?: string };
     return pkg.version ?? '0.0.0';
   } catch {
     return '0.0.0';
   }
-})();
+}
 
 interface RemotePackageJson {
   version?: string;
@@ -35,7 +35,6 @@ export class UpdateService {
   private latestVersion: string | null = null;
   private changelog: string = '';
   private releaseUrl: string = '';
-  private hasUpdate: boolean = false;
   private checkInterval: ReturnType<typeof setInterval> | null = null;
   private isApplying: boolean = false;
   private lastCheckAt: number = 0;
@@ -57,10 +56,11 @@ export class UpdateService {
   }
 
   getStatus(): UpdateStatus {
+    const currentVersion = getCurrentVersion();
     return {
-      currentVersion: CURRENT_VERSION,
+      currentVersion,
       latestVersion: this.latestVersion,
-      hasUpdate: this.hasUpdate,
+      hasUpdate: this.latestVersion ? (semverGt(this.latestVersion, currentVersion) ?? false) : false,
       changelog: this.changelog,
       releaseUrl: this.releaseUrl,
     };
@@ -68,8 +68,9 @@ export class UpdateService {
 
   /** Re-emit current update status to a single newly-connected socket. */
   broadcastToSocket(socket: Socket<ClientToServerEvents, ServerToClientEvents>): void {
-    if (this.hasUpdate) {
-      socket.emit('update:available', this.getStatus());
+    const status = this.getStatus();
+    if (status.hasUpdate) {
+      socket.emit('update:available', status);
     }
   }
 
@@ -95,17 +96,14 @@ export class UpdateService {
 
       this.latestVersion = remoteVersion;
       this.releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/commits/${REPO_BRANCH}`;
-      this.hasUpdate = semverGt(remoteVersion, CURRENT_VERSION) ?? false;
 
-      if (this.hasUpdate) {
-        this.io?.emit('update:available', this.getStatus());
-      }
+      this.io?.emit('update:available', this.getStatus());
     } catch (err) {
       console.warn('[update] Version check failed (network error), will retry next interval:', (err as Error).message);
     }
   }
 
-  async applyUpdate(): Promise<{ success: boolean; error?: string }> {
+  async applyUpdate(force?: boolean): Promise<{ success: boolean; error?: string; warning?: string; requiresConfirmation?: boolean }> {
     if (this.isApplying) {
       return { success: false, error: 'Update already in progress' };
     }
@@ -113,9 +111,12 @@ export class UpdateService {
 
     try {
       // Guard: check for uncommitted local changes
-      const { stdout: statusOut } = await execFile('git', ['status', '--porcelain'], { cwd: this.repoRoot() });
-      if (statusOut.trim()) {
-        return { success: false, error: 'Cannot update: you have local changes. Stash or commit them first.' };
+      if (!force) {
+        const { stdout: statusOut } = await execFile('git', ['status', '--porcelain'], { cwd: this.repoRoot() });
+        if (statusOut.trim()) {
+          this.isApplying = false;
+          return { success: false, warning: 'You have local changes that will not be included in the update. The update will proceed with git pull, which may conflict with your changes.', requiresConfirmation: true };
+        }
       }
 
       // Run git pull
