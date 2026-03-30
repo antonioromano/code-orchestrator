@@ -14,7 +14,7 @@ interface CommitModeFileSectionProps {
   onToggleFile: () => void;
   onToggleChunk: (chunkIndex: number, totalChanges: number) => void;
   onToggleLine: (chunkIndex: number, changeIndex: number) => void;
-  onRevertLine: (chunkIndex: number, changeIndex: number) => void;
+  onRevertChunk: (chunkIndex: number, totalChanges: number) => void;
   isNarrow: boolean; // narrow layout: file-level only
 }
 
@@ -178,7 +178,7 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
                             totalChanges,
                             onToggleChunk: () => commitMode.onToggleChunk(i, totalChanges),
                             onToggleLine: (ci) => commitMode.onToggleLine(i, ci),
-                            onRevertLine: (ci) => commitMode.onRevertLine(i, ci),
+                            onRevertChunk: () => commitMode.onRevertChunk(i, totalChanges),
                           }
                         : undefined
                     }

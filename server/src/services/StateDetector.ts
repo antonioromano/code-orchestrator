@@ -15,6 +15,12 @@ const AGENT_PROMPT_PATTERNS: Record<string, RegExp[]> = {
     /Esc to cancel/i,
     /Enter to confirm/i,
     /\?\s*$/,
+    /Do you want to proceed/i,
+    /don't ask again for/i,
+    /auto-accept edits/i,
+    /manually approve edits/i,
+    /Tell Claude what to change/i,
+    /shift\+tab to approve/i,
   ],
   gemini: [
     />\s*$/,
@@ -68,10 +74,17 @@ export class StateDetector {
     // Reset idle timer
     if (this.idleTimer) clearTimeout(this.idleTimer);
 
-    // If output is flowing, we're running
-    this.updateStatus('running');
+    // Check for prompt patterns immediately — handles cases where periodic output
+    // (e.g. Claude Code's status bar re-rendering every second) prevents the idle
+    // timer from ever firing, keeping the status stuck as 'running'.
+    const tail = this.buffer.slice(-500).trim();
+    if (this.promptPatterns.some(p => p.test(tail))) {
+      this.updateStatus('waiting');
+    } else {
+      this.updateStatus('running');
+    }
 
-    // After output settles, check for prompt
+    // Also check after output settles as a fallback
     this.idleTimer = setTimeout(() => {
       this.checkForPrompt();
     }, this.idleDelayMs);

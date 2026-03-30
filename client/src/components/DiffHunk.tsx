@@ -11,7 +11,7 @@ interface CommitModeHunkProps {
   totalChanges: number;
   onToggleChunk: () => void;
   onToggleLine: (changeIndex: number) => void;
-  onRevertLine: (changeIndex: number) => void;
+  onRevertChunk: () => void;
 }
 
 interface DiffHunkProps {
@@ -113,11 +113,34 @@ export function DiffHunk({ chunk, theme, searchQuery, commitMode }: DiffHunkProp
         }}
       >
         {showCommit && (
-          <TriStateCheckbox
-            checked={triStateToChecked(hunkState)}
-            onChange={commitMode!.onToggleChunk}
-            label={`Toggle hunk selection`}
-          />
+          <>
+            <TriStateCheckbox
+              checked={triStateToChecked(hunkState)}
+              onChange={commitMode!.onToggleChunk}
+              label={`Toggle hunk selection`}
+            />
+            <button
+              onClick={(e) => { e.stopPropagation(); commitMode!.onRevertChunk(); }}
+              title="Revert this hunk"
+              aria-label="Revert this hunk"
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: c.hunkText,
+                opacity: 0.4,
+                flexShrink: 0,
+                transition: 'opacity 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4'; }}
+            >
+              <Undo2 size={11} strokeWidth={2} />
+            </button>
+          </>
         )}
         <span style={{ flex: 1 }}>{chunk.content}</span>
       </div>
@@ -180,58 +203,6 @@ export function DiffHunk({ chunk, theme, searchQuery, commitMode }: DiffHunkProp
                 cursor: showCommit && isChangeLine ? 'pointer' : undefined,
               }}
             >
-              {/* Commit mode checkbox + revert icon / spacer */}
-              {showCommit && (
-                <span
-                  style={{
-                    width: '40px',
-                    minWidth: '40px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                    flexShrink: 0,
-                  }}
-                  onClick={e => e.stopPropagation()}
-                >
-                  {isChangeLine ? (
-                    <>
-                      <TriStateCheckbox
-                        checked={isSelected}
-                        onChange={() => commitMode!.onToggleLine(thisChangeIndex)}
-                        size={11}
-                        label={`Toggle line ${thisChangeIndex}`}
-                      />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          commitMode!.onRevertLine(thisChangeIndex);
-                        }}
-                        title="Revert this line"
-                        aria-label="Revert this line"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: 0,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          color: textColor,
-                          opacity: 0.3,
-                          flexShrink: 0,
-                          transition: 'opacity 0.15s',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
-                      >
-                        <Undo2 size={11} strokeWidth={2} />
-                      </button>
-                    </>
-                  ) : (
-                    <span style={{ width: 26, height: 11 }} />
-                  )}
-                </span>
-              )}
 
               <span
                 style={{

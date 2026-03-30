@@ -325,6 +325,16 @@ export class GitService {
     }
   }
 
+  async push(folderPath: string): Promise<PatchOperationResponse> {
+    try {
+      await execGitWithStderr(['push'], folderPath);
+      return { success: true };
+    } catch (err) {
+      const e = err as { message?: string; stderr?: string };
+      return { success: false, error: e.stderr || e.message || 'Push failed' };
+    }
+  }
+
   async getLastCommit(folderPath: string): Promise<GitLogResponse> {
     try {
       const output = await execGit(['log', '-1', '--pretty=%B'], folderPath);

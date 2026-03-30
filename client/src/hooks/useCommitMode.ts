@@ -58,8 +58,10 @@ export interface CommitModeActions {
   setCommitMessage: (msg: string) => void;
   setIsAmend: (amend: boolean) => void;
   stageAndCommit: (sessionId: string, fileMetas: FileMeta[], untrackedFiles: string[]) => Promise<void>;
+  stageCommitAndPush: (sessionId: string, fileMetas: FileMeta[], untrackedFiles: string[]) => Promise<void>;
   discardSelected: (sessionId: string, fileMetas: FileMeta[]) => Promise<void>;
   discardLine: (sessionId: string, filePath: string, chunkIndex: number, changeIndex: number) => Promise<void>;
+  discardChunk: (sessionId: string, filePath: string, chunkIndex: number, totalChanges: number) => Promise<void>;
   undoDiscard: (sessionId: string) => Promise<void>;
   dismissUndoEntry: () => void;
   dismissError: () => void;
@@ -193,9 +195,8 @@ export function useCommitMode(): UseCommitModeResult {
     setState(prev => {
       const newSelections = new Map(prev.selections);
       const currentState = fileTriState(newSelections.get(filePath), fileMeta);
-      const isAllOrPartial = currentState !== 'none';
 
-      if (isAllOrPartial) {
+      if (currentState === 'all') {
         newSelections.delete(filePath);
       } else {
         const fileSelection = new Map<number, Set<number>>();
@@ -302,6 +303,7 @@ export function useCommitMode(): UseCommitModeResult {
     sessionId: string,
     fileMetas: FileMeta[],
     untrackedFiles: string[],
+    shouldPush = false,
   ) => {
     setState(prev => ({ ...prev, status: 'staging', errorMessage: null }));
 
@@ -339,6 +341,15 @@ export function useCommitMode(): UseCommitModeResult {
       return;
     }
 
+    if (shouldPush) {
+      setState(prev => ({ ...prev, status: 'committing' }));
+      const pushResult = await api.gitPush(sessionId);
+      if (!pushResult.success) {
+        setState(prev => ({ ...prev, status: 'error', errorMessage: pushResult.error ?? 'Push failed' }));
+        return;
+      }
+    }
+
     // Success: exit commit mode
     setState(prev => ({
       ...prev,
@@ -352,6 +363,14 @@ export function useCommitMode(): UseCommitModeResult {
       hasStaleDiff: false,
     }));
   }, [state]);
+
+  const stageCommitAndPush = useCallback(async (
+    sessionId: string,
+    fileMetas: FileMeta[],
+    untrackedFiles: string[],
+  ) => {
+    return stageAndCommit(sessionId, fileMetas, untrackedFiles, true);
+  }, [stageAndCommit]);
 
   const discardSelected = useCallback(async (sessionId: string, fileMetas: FileMeta[]) => {
     const { selections } = state;
@@ -431,6 +450,37 @@ export function useCommitMode(): UseCommitModeResult {
     }
   }, []);
 
+  const discardChunk = useCallback(async (sessionId: string, filePath: string, chunkIndex: number, totalChanges: number) => {
+    setState(prev => {
+      if (prev.status !== 'idle') return prev;
+      return { ...prev, errorMessage: null };
+    });
+
+    const allIndices = Array.from({ length: totalChanges }, (_, i) => i);
+    const selection = {
+      filePath,
+      source: 'unstaged' as const,
+      chunks: [{ chunkIndex, selectedChangeIndices: allIndices }],
+    };
+
+    const result = await api.discardPatch(sessionId, selection);
+    if (!result.success) {
+      setState(prev => ({ ...prev, errorMessage: result.error ?? 'Revert hunk failed' }));
+      return;
+    }
+
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setState(prev => ({
+      ...prev,
+      undoEntry: result.undoId ? { id: result.undoId, description: '1 hunk reverted' } : null,
+    }));
+    if (result.undoId) {
+      undoTimerRef.current = setTimeout(() => {
+        setState(prev => ({ ...prev, undoEntry: null }));
+      }, 30_000);
+    }
+  }, []);
+
   const undoDiscard = useCallback(async (sessionId: string) => {
     const { undoEntry } = state;
     if (!undoEntry) return;
@@ -475,8 +525,10 @@ export function useCommitMode(): UseCommitModeResult {
       setCommitMessage,
       setIsAmend,
       stageAndCommit,
+      stageCommitAndPush,
       discardSelected,
       discardLine,
+      discardChunk,
       undoDiscard,
       dismissUndoEntry,
       dismissError,

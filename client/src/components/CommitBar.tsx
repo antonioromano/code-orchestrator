@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { GitCommit, RotateCcw, X, AlertCircle, Loader2 } from 'lucide-react';
+import { GitCommit, RotateCcw, X, AlertCircle, Loader2, ArrowUpFromLine } from 'lucide-react';
 import type { UseCommitModeResult } from '../hooks/useCommitMode.js';
 import type { FileMeta } from '../hooks/useCommitMode.js';
 
@@ -32,6 +32,11 @@ export function CommitBar({
 
   const isLoading = commitMode.status === 'staging' || commitMode.status === 'committing';
   const statusLabel = commitMode.status === 'staging' ? 'Staging…' : commitMode.status === 'committing' ? 'Committing…' : null;
+
+  const handleCommitAndPush = async () => {
+    await actions.stageCommitAndPush(sessionId, fileMetas, untrackedFiles);
+    onRefresh?.();
+  };
 
   // Auto-resize textarea
   useEffect(() => {
@@ -321,6 +326,23 @@ export function CommitBar({
             >
               <GitCommit size={12} strokeWidth={2} />
               Commit
+            </button>
+
+            {/* Commit & Push button */}
+            <button
+              onClick={handleCommitAndPush}
+              disabled={!canCommit || isLoading}
+              title="Commit and push to remote"
+              style={{
+                ...actionBtnStyle,
+                color: '#fff',
+                background: canCommit && !isLoading ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                borderColor: 'transparent',
+                opacity: (!canCommit || isLoading) ? 0.5 : 1,
+              }}
+            >
+              <ArrowUpFromLine size={12} strokeWidth={2} />
+              Push
             </button>
           </div>
         </div>

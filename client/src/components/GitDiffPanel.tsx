@@ -409,8 +409,8 @@ export function GitDiffPanel({
                 totalChanges,
                 onToggleChunk: () => actions.toggleChunk(filePath, i, totalChanges),
                 onToggleLine: (ci: number) => actions.toggleLine(filePath, i, ci),
-                onRevertLine: async (ci: number) => {
-                  await actions.discardLine(currentSessionId, filePath, i, ci);
+                onRevertChunk: async () => {
+                  await actions.discardChunk(currentSessionId, filePath, i, totalChanges);
                   onRefresh();
                 },
               } : undefined;
@@ -640,8 +640,8 @@ export function GitDiffPanel({
                     onToggleFile: () => actions.toggleFile(filePath, fileMeta),
                     onToggleChunk: (chunkIndex: number, totalChanges: number) => actions.toggleChunk(filePath, chunkIndex, totalChanges),
                     onToggleLine: (chunkIndex: number, changeIndex: number) => actions.toggleLine(filePath, chunkIndex, changeIndex),
-                    onRevertLine: async (chunkIndex: number, changeIndex: number) => {
-                      await actions.discardLine(currentSessionId, filePath, chunkIndex, changeIndex);
+                    onRevertChunk: async (chunkIndex: number, totalChanges: number) => {
+                      await actions.discardChunk(currentSessionId, filePath, chunkIndex, totalChanges);
                       onRefresh();
                     },
                     isNarrow,

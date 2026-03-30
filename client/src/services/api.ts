@@ -159,6 +159,13 @@ export const api = {
     return res.json();
   },
 
+  gitPush: async (sessionId: string): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-push`, {
+      method: 'POST',
+    });
+    return res.json();
+  },
+
   gitUnstage: async (sessionId: string, filePath: string): Promise<PatchOperationResponse> => {
     const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-unstage`, {
       method: 'POST',
