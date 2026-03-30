@@ -142,7 +142,8 @@ export class UpdateService {
           } catch (err) {
             console.error('[update] npm install failed:', (err as Error).message);
           }
-          process.exit(0);
+          // Exit with non-zero code so nodemon restarts (code 0 = "clean exit, wait for changes")
+          process.exit(1);
         })();
       }, 500);
 
