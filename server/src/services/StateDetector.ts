@@ -21,6 +21,7 @@ const AGENT_PROMPT_PATTERNS: Record<string, RegExp[]> = {
     /manually approve edits/i,
     /Tell Claude what to change/i,
     /shift\+tab to approve/i,
+    /always allow access/i,
   ],
   gemini: [
     />\s*$/,
@@ -66,9 +67,9 @@ export class StateDetector {
     const stripped = data.replace(STRIP_ANSI, '').replace(/\x1b/g, '');
     this.buffer += stripped;
 
-    // Keep buffer at reasonable size
-    if (this.buffer.length > 4000) {
-      this.buffer = this.buffer.slice(-2000);
+    // Keep buffer at reasonable size — must be larger than the tail check window (1500)
+    if (this.buffer.length > 8000) {
+      this.buffer = this.buffer.slice(-4000);
     }
 
     // Reset idle timer
@@ -77,7 +78,9 @@ export class StateDetector {
     // Check for prompt patterns immediately — handles cases where periodic output
     // (e.g. Claude Code's status bar re-rendering every second) prevents the idle
     // timer from ever firing, keeping the status stuck as 'running'.
-    const tail = this.buffer.slice(-500).trim();
+    // Use 1500 chars: frequent small status bar updates accumulate and push the
+    // actual prompt text beyond a 500-char window within seconds.
+    const tail = this.buffer.slice(-1500).trim();
     if (this.promptPatterns.some(p => p.test(tail))) {
       this.updateStatus('waiting');
     } else {
@@ -91,7 +94,7 @@ export class StateDetector {
   }
 
   private checkForPrompt(): void {
-    const tail = this.buffer.slice(-500).trim();
+    const tail = this.buffer.slice(-1500).trim();
 
     for (const pattern of this.promptPatterns) {
       if (pattern.test(tail)) {
