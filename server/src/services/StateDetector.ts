@@ -78,7 +78,15 @@ export class StateDetector {
   }
 
   feed(data: string): void {
-    const stripped = data.replace(STRIP_ANSI, '').replace(/\x1b/g, '');
+    // Replace escape sequences with a space (not empty string) to preserve word
+    // boundaries. TUI apps like Claude Code's Ink renderer use cursor positioning
+    // instead of literal space characters — stripping to '' merges words together,
+    // making prompt patterns like /Do you want to/ fail to match.
+    const stripped = data
+      .replace(STRIP_ANSI, ' ')
+      .replace(/\x1b/g, '')
+      .replace(/ {2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n');
     this.buffer += stripped;
 
     // Keep buffer at reasonable size — must be larger than the tail check window (1500)
