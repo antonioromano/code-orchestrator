@@ -93,7 +93,7 @@ export function Styleguide() {
       <div style={{ marginBottom: 'var(--space-8)' }}>
         <h1 style={{ margin: '0 0 4px', fontSize: '24px', fontWeight: 700 }}>Design System</h1>
         <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
-          Code Orchestrator — visual reference for all tokens and components
+          Argus — visual reference for all tokens and components
         </p>
       </div>
 

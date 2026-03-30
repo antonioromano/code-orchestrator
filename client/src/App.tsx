@@ -307,7 +307,7 @@ function AppInner() {
           gap: 'var(--space-3)',
         }}>
           <span style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-            Code Orchestrator
+            Argus
           </span>
           <span style={{
             fontSize: 'var(--text-sm)',
@@ -344,7 +344,7 @@ function AppInner() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <span style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-            Code Orchestrator
+            Argus
           </span>
           <span
             style={{

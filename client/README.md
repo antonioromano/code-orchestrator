@@ -1,6 +1,6 @@
 # Client
 
-React frontend for Code Orchestrator. Provides a dashboard of browser-based terminals connected to Claude Code sessions running on the server.
+React frontend for Argus. Provides a dashboard of browser-based terminals connected to Claude Code sessions running on the server.
 
 ## Key Dependencies
 

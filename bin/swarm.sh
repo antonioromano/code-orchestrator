@@ -130,7 +130,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # --- Start servers ---
-echo "Starting Code Orchestrator..."
+echo "Starting Argus..."
 echo "  Server: http://localhost:5400"
 echo "  Client: http://localhost:5173"
 echo ""

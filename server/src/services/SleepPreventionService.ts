@@ -14,7 +14,7 @@ export class SleepPreventionService {
     } else if (platform === 'linux') {
       this.process = spawn(
         'systemd-inhibit',
-        ['--what=idle', '--who=Code Orchestrator', '--why=ngrok tunnel active', 'sleep', 'infinity'],
+        ['--what=idle', '--who=Argus', '--why=ngrok tunnel active', 'sleep', 'infinity'],
         { stdio: 'ignore' }
       );
     } else {

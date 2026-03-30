@@ -1,4 +1,4 @@
-# Code Orchestrator — Enhancement Plan
+# Argus — Enhancement Plan
 
 Work through these one by one. Each item is self-contained.
 
@@ -6,7 +6,7 @@ Work through these one by one. Each item is self-contained.
 
 ## Phase 1 — Session Awareness & Reliability
 
-- [ ] **1A. Session Notifications** — When a session goes `waiting`, show a browser Notification, update the tab title (e.g. `(2) Code Orchestrator`), and add a waiting-count badge to the Sessions tab.
+- [ ] **1A. Session Notifications** — When a session goes `waiting`, show a browser Notification, update the tab title (e.g. `(2) Argus`), and add a waiting-count badge to the Sessions tab.
   - New: `client/src/hooks/useNotifications.ts`
   - Edit: `client/src/hooks/useSessions.ts`, `client/src/components/NavTabs.tsx`, `client/src/App.tsx`
 
