@@ -63,6 +63,11 @@ export interface ClientToServerEvents {
   'session:leave': (sessionId: string) => void;
   'session:input': (payload: { sessionId: string; data: string }) => void;
   'session:resize': (payload: { sessionId: string; cols: number; rows: number }) => void;
+  // Ephemeral terminals (Explorer view only — not persisted, not in session list)
+  'ephemeral:spawn': (payload: { id: string; cwd: string }) => void;
+  'ephemeral:input': (payload: { id: string; data: string }) => void;
+  'ephemeral:resize': (payload: { id: string; cols: number; rows: number }) => void;
+  'ephemeral:kill': (payload: { id: string }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -75,6 +80,9 @@ export interface ServerToClientEvents {
   'auth:required': (payload: { required: boolean }) => void;
   'update:available': (status: UpdateStatus) => void;
   'update:applying': () => void;
+  // Ephemeral terminal responses
+  'ephemeral:output': (payload: { id: string; data: string }) => void;
+  'ephemeral:exit': (payload: { id: string; exitCode: number }) => void;
 }
 
 export interface UpdateStatus {

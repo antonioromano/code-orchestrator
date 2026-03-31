@@ -119,6 +119,7 @@ function AppInner() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [pickedFolder, setPickedFolder] = useState<string | null>(null);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
+  const [explorerState, setExplorerState] = useState<{ selectedFilePath: string | null; searchQuery: string }>({ selectedFilePath: null, searchQuery: '' });
   const [diffStates, setDiffStates] = useState<Map<string, DiffState>>(new Map());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showNgrokModal, setShowNgrokModal] = useState(false);
@@ -528,7 +529,16 @@ function AppInner() {
       {activeTab === 'explorer' && (
         <div role="tabpanel" id="tabpanel-explorer" aria-labelledby="tab-explorer" style={{ display: 'contents' }}>
           <ErrorBoundary variant="tab" label="Explorer">
-            <ExplorerPanel sessions={orderedSessions} theme={theme} onSelectSession={handleFocus} />
+            <ExplorerPanel
+              sessions={orderedSessions}
+              theme={theme}
+              onSelectSession={handleFocus}
+              focusedSessionId={focusedSessionId}
+              initialFilePath={explorerState.selectedFilePath}
+              initialSearchQuery={explorerState.searchQuery}
+              onExplorerStateChange={setExplorerState}
+              socket={socket}
+            />
           </ErrorBoundary>
         </div>
       )}

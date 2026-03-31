@@ -9,14 +9,16 @@ interface SessionSidebarProps {
   /** Optional element rendered next to the "Sessions" header label */
   headerAction?: ReactNode;
   className?: string;
+  /** Override the default 200px width */
+  width?: number;
 }
 
-export function SessionSidebar({ sessions, activeSessionId, onSelectSession, headerAction, className }: SessionSidebarProps) {
+export function SessionSidebar({ sessions, activeSessionId, onSelectSession, headerAction, className, width }: SessionSidebarProps) {
   return (
     <div
       className={className}
       style={{
-        width: '200px',
+        width: width != null ? `${width}px` : '200px',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',

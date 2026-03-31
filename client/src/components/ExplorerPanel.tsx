@@ -32,11 +32,15 @@ import dockerLang from 'react-syntax-highlighter/dist/esm/languages/prism/docker
 import makefileLang from 'react-syntax-highlighter/dist/esm/languages/prism/makefile';
 import { syntaxTheme } from '../utils/syntaxTheme';
 import { langFromPath } from '../utils/langFromPath';
-import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon, PanelLeft, PanelLeftClose } from 'lucide-react';
-import type { SessionInfo, FileContentResponse, FileSearchResult } from '@remote-orchestrator/shared';
+import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon, PanelLeft, PanelLeftClose, Terminal as TerminalIcon } from 'lucide-react';
+import type { Socket } from 'socket.io-client';
+import type { SessionInfo, FileContentResponse, FileSearchResult, ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { ExplorerFolderTree } from './ExplorerFolderTree.js';
 import { SessionSidebar } from './SessionSidebar.js';
+import { ResizeDivider } from './ResizeDivider.js';
+import { EphemeralTerminal } from './EphemeralTerminal.js';
 import { Tooltip } from './primitives/Tooltip.js';
+import { useResizablePanel } from '../hooks/useResizablePanel.js';
 import { api } from '../services/api.js';
 
 SyntaxHighlighter.registerLanguage('tsx', tsxLang);
@@ -71,10 +75,17 @@ SyntaxHighlighter.registerLanguage('makefile', makefileLang);
 
 const NARROW_BREAKPOINT = 520;
 
+type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
 interface ExplorerPanelProps {
   sessions: SessionInfo[];
   theme: 'dark' | 'light';
   onSelectSession?: (id: string) => void;
+  focusedSessionId?: string | null;
+  initialFilePath?: string | null;
+  initialSearchQuery?: string;
+  onExplorerStateChange?: (state: { selectedFilePath: string | null; searchQuery: string }) => void;
+  socket?: TypedSocket;
 }
 
 function FileIcon({ ext }: { ext: string }) {
@@ -211,15 +222,15 @@ function SearchResultsList({ results, isSearching, selectedFilePath, rootPath, o
   );
 }
 
-export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps) {
+export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSessionId, initialFilePath, initialSearchQuery, onExplorerStateChange, socket }: ExplorerPanelProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [treeKey, setTreeKey] = useState(0);
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(initialFilePath ?? null);
   const [fileContent, setFileContent] = useState<FileContentResponse | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery ?? '');
   const [searchResults, setSearchResults] = useState<FileSearchResult[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
@@ -227,7 +238,29 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
   const fetchIdRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const treePanelRef = useRef<HTMLDivElement>(null);
   const [isNarrow, setIsNarrow] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
+
+  const { size: sidebarWidth, isDragging: isSidebarDragging, handleMouseDown: handleSidebarMouseDown } = useResizablePanel({
+    containerRef,
+    defaultSize: 200,
+    minSize: 120,
+    maxSize: 350,
+    direction: 'left',
+    unit: 'px',
+    storageKey: 'explorer-sidebar-width',
+  });
+
+  const { size: treeWidth, isDragging: isTreeDragging, handleMouseDown: handleTreeMouseDown } = useResizablePanel({
+    containerRef: treePanelRef,
+    defaultSize: 260,
+    minSize: 150,
+    maxSize: 500,
+    direction: 'left',
+    unit: 'px',
+    storageKey: 'explorer-tree-width',
+  });
   const [isTreeVisible, setIsTreeVisible] = useState(true);
   const [mdPreview, setMdPreview] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -250,16 +283,44 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
     return () => ro.disconnect();
   }, []);
 
-  // Auto-select first session when sessions change or component mounts
+  // Auto-select session on mount/sessions change, preferring focusedSessionId
   useEffect(() => {
     if (sessions.length === 0) {
       setSelectedSessionId(null);
       return;
     }
     if (!selectedSessionId || !sessions.find(s => s.id === selectedSessionId)) {
-      setSelectedSessionId(sessions[0].id);
+      const initialId = (focusedSessionId && sessions.find(s => s.id === focusedSessionId))
+        ? focusedSessionId
+        : sessions[0].id;
+      setSelectedSessionId(initialId);
     }
-  }, [sessions, selectedSessionId]);
+  }, [sessions, selectedSessionId, focusedSessionId]);
+
+  // Fetch file content on mount if we have an initial file path (restored across tab switches)
+  useEffect(() => {
+    if (!initialFilePath) return;
+    const id = ++fetchIdRef.current;
+    setFileLoading(true);
+    api.getFileContent(initialFilePath).then(content => {
+      if (fetchIdRef.current === id) {
+        setFileContent(content);
+        setOriginalMtimeMs(content.mtimeMs);
+        setFileLoading(false);
+      }
+    }).catch(err => {
+      if (fetchIdRef.current === id) {
+        setFileError(err instanceof Error ? err.message : 'Failed to load file');
+        setFileLoading(false);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only on mount
+
+  // Sync navigation state back to parent so it survives tab switches
+  useEffect(() => {
+    onExplorerStateChange?.({ selectedFilePath, searchQuery });
+  }, [selectedFilePath, searchQuery, onExplorerStateChange]);
 
   // Debounced file search
   useEffect(() => {
@@ -1034,21 +1095,22 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
       ) : (
         /* Wide layout: session sidebar | file tree + search | file preview */
         <>
-          {/* Left: Session sidebar (200px) */}
+          {/* Left: Session sidebar (resizable) */}
           <SessionSidebar
             sessions={sessions}
             activeSessionId={selectedSessionId}
             onSelectSession={handleSessionSelect}
+            width={sidebarWidth}
           />
+          <ResizeDivider isDragging={isSidebarDragging} onMouseDown={handleSidebarMouseDown} />
 
-          {/* Middle: File tree with search (260px) */}
-          <div style={{
-            width: '260px',
+          {/* Middle: File tree with search (resizable) */}
+          <div ref={treePanelRef} style={{
+            width: `${treeWidth}px`,
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
             background: 'var(--color-bg-base)',
-            borderRight: '1px solid var(--color-border-base)',
             overflow: 'hidden',
           }}>
             {/* Tree header: search + folder path + refresh */}
@@ -1078,6 +1140,27 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
                 >
                   <RefreshCw size={13} strokeWidth={1.75} />
                 </button>
+                {selectedSession && socket && (
+                  <button
+                    onClick={() => setShowTerminal(t => !t)}
+                    title={showTerminal ? 'Close terminal' : 'Open terminal'}
+                    style={{
+                      background: showTerminal ? 'var(--color-accent)' : 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      display: 'inline-flex',
+                      borderRadius: 'var(--radius-sm)',
+                      color: showTerminal ? '#fff' : 'var(--color-text-muted)',
+                      transition: 'color var(--transition-fast)',
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) => { if (!showTerminal) e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                    onMouseLeave={(e) => { if (!showTerminal) e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                  >
+                    <TerminalIcon size={13} strokeWidth={1.75} />
+                  </button>
+                )}
               </div>
               <div style={{
                 fontSize: '10px',
@@ -1123,8 +1206,19 @@ export function ExplorerPanel({ sessions, onSelectSession }: ExplorerPanelProps)
             </div>
           </div>
 
-          {/* Right: File preview (flex: 1) */}
-          {filePreviewPanel}
+          <ResizeDivider isDragging={isTreeDragging} onMouseDown={handleTreeMouseDown} />
+
+          {/* Right: File preview or Ephemeral Terminal (flex: 1) */}
+          {showTerminal && selectedSession ? (
+            <EphemeralTerminal
+              cwd={selectedSession.folderPath}
+              socket={socket}
+              theme={theme}
+              onClose={() => setShowTerminal(false)}
+            />
+          ) : (
+            filePreviewPanel
+          )}
         </>
       )}
       {/* Unsaved changes modal */}

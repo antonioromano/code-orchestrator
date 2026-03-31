@@ -1,4 +1,6 @@
-import { useMemo, useState, useRef, useCallback, useEffect } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
+import { useResizablePanel } from '../hooks/useResizablePanel.js';
+import { ResizeDivider } from './ResizeDivider.js';
 import type { SessionInfo } from '@remote-orchestrator/shared';
 import type { Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
@@ -158,32 +160,28 @@ export function Dashboard({
   const groupKeys = useMemo(() => Array.from(groups.keys()), [groups]);
   const groupSortableIds = useMemo(() => groupKeys.map((k) => `group::${k}`), [groupKeys]);
 
-  const [diffPanelWidth, setDiffPanelWidth] = useState(40);
-  const [isDragging, setIsDragging] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const focusPanelRef = useRef<HTMLDivElement>(null);
 
-  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
+  const { size: diffPanelWidth, isDragging, handleMouseDown: handleDividerMouseDown } = useResizablePanel({
+    containerRef: splitContainerRef,
+    defaultSize: 40,
+    minSize: 20,
+    maxSize: 70,
+    direction: 'right',
+    unit: '%',
+    storageKey: 'dashboard-diff-width',
+  });
 
-  useEffect(() => {
-    if (!isDragging) return;
-    const onMouseMove = (e: MouseEvent) => {
-      if (!splitContainerRef.current) return;
-      const rect = splitContainerRef.current.getBoundingClientRect();
-      const offsetFromRight = rect.right - e.clientX;
-      const newWidthPct = Math.min(Math.max((offsetFromRight / rect.width) * 100, 20), 70);
-      setDiffPanelWidth(newWidthPct);
-    };
-    const onMouseUp = () => setIsDragging(false);
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [isDragging]);
+  const { size: sidebarWidth, isDragging: isSidebarDragging, handleMouseDown: handleSidebarDividerMouseDown } = useResizablePanel({
+    containerRef: focusPanelRef,
+    defaultSize: 200,
+    minSize: 120,
+    maxSize: 350,
+    direction: 'left',
+    unit: 'px',
+    storageKey: 'dashboard-sidebar-width',
+  });
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -464,7 +462,7 @@ export function Dashboard({
           </div>
 
           {/* Two-panel content area: sidebar + terminal/diff */}
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
+          <div ref={focusPanelRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
 
             {/* Session sidebar — hidden on mobile via CSS */}
             <SessionSidebar
@@ -472,6 +470,7 @@ export function Dashboard({
               sessions={sessions}
               activeSessionId={focusedSessionId}
               onSelectSession={handleSwitchFocus}
+              width={sidebarWidth}
               headerAction={
                 <button
                   onClick={handleUnfocus}
@@ -494,6 +493,7 @@ export function Dashboard({
                 </button>
               }
             />
+            <ResizeDivider isDragging={isSidebarDragging} onMouseDown={handleSidebarDividerMouseDown} />
 
             {/* Terminal + Diff area */}
             <div
@@ -535,19 +535,7 @@ export function Dashboard({
                 </div>
               )}
               {getDiffState(focusedSession.id).isOpen && !getDiffState(focusedSession.id).isFullscreen && (
-                <div
-                  onMouseDown={handleDividerMouseDown}
-                  style={{
-                    width: '4px',
-                    cursor: 'col-resize',
-                    flexShrink: 0,
-                    background: isDragging ? 'var(--color-accent)' : 'var(--color-border-base)',
-                    transition: isDragging ? 'none' : 'background 0.15s',
-                    userSelect: 'none',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-accent)'; }}
-                  onMouseLeave={(e) => { if (!isDragging) e.currentTarget.style.background = 'var(--color-border-base)'; }}
-                />
+                <ResizeDivider isDragging={isDragging} onMouseDown={handleDividerMouseDown} />
               )}
               {getDiffState(focusedSession.id).isOpen && (
                 <div

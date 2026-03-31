@@ -3,6 +3,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchest
 import type { SessionManager } from '../services/SessionManager.js';
 import type { AuthService } from '../services/AuthService.js';
 import type { UpdateService } from '../services/UpdateService.js';
+import { EphemeralTerminalManager } from '../services/EphemeralTerminalManager.js';
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -26,6 +27,8 @@ function getMaxDimensions(sessionId: string): { cols: number; rows: number } | n
   }
   return maxCols > 0 && maxRows > 0 ? { cols: maxCols, rows: maxRows } : null;
 }
+
+const ephemeralManager = new EphemeralTerminalManager();
 
 export function setupSocketHandler(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
@@ -103,6 +106,31 @@ export function setupSocketHandler(
       }
     });
 
+    // Ephemeral terminal events (Explorer view — not persisted, not in session list)
+    socket.on('ephemeral:spawn', ({ id, cwd }) => {
+      ephemeralManager.spawn(
+        id,
+        socket.id,
+        cwd,
+        120,
+        30,
+        (data) => socket.emit('ephemeral:output', { id, data }),
+        (exitCode) => socket.emit('ephemeral:exit', { id, exitCode }),
+      );
+    });
+
+    socket.on('ephemeral:input', ({ id, data }) => {
+      ephemeralManager.write(id, data);
+    });
+
+    socket.on('ephemeral:resize', ({ id, cols, rows }) => {
+      ephemeralManager.resize(id, cols, rows);
+    });
+
+    socket.on('ephemeral:kill', ({ id }) => {
+      ephemeralManager.kill(id);
+    });
+
     socket.on('disconnect', () => {
       console.log(`Client disconnected: ${socket.id}`);
       // Clean up dimensions for all sessions this socket was part of
@@ -115,6 +143,8 @@ export function setupSocketHandler(
           }
         }
       }
+      // Kill all ephemeral terminals for this socket
+      ephemeralManager.killAllForSocket(socket.id);
     });
   });
 }
