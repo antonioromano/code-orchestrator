@@ -4,7 +4,7 @@ import type { Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Maximize2, Minimize2, Minus, GitCompare, X, Move, RotateCcw } from 'lucide-react';
+import { Maximize2, Minimize2, Minus, GitCompare, X, Move, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useTerminal } from '../hooks/useTerminal.js';
 import { StatusDot } from './primitives/index.js';
 import { Badge } from './primitives/index.js';
@@ -149,6 +149,12 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           >
             {session.name}
           </span>
+
+          {session.hasGitChanges && (
+            <Tooltip content="Uncommitted changes" position="bottom">
+              <AlertTriangle size={13} color="#f59e0b" strokeWidth={2} style={{ flexShrink: 0 }} />
+            </Tooltip>
+          )}
 
           <Badge label={session.agentType} />
 

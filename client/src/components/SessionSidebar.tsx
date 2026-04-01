@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { SessionInfo } from '@remote-orchestrator/shared';
 import { StatusDot } from './primitives/index.js';
+import { AlertTriangle } from 'lucide-react';
 
 interface SessionSidebarProps {
   sessions: SessionInfo[];
@@ -85,16 +86,28 @@ export function SessionSidebar({ sessions, activeSessionId, onSelectSession, hea
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
-                    fontSize: 'var(--text-sm)',
-                    fontFamily: 'var(--font-mono)',
-                    fontWeight: isActive ? 600 : 400,
-                    color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
                   }}
                 >
-                  {s.name}
+                  <span
+                    style={{
+                      fontSize: 'var(--text-sm)',
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: isActive ? 600 : 400,
+                      color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      minWidth: 0,
+                    }}
+                  >
+                    {s.name}
+                  </span>
+                  {s.hasGitChanges && (
+                    <AlertTriangle size={11} color="#f59e0b" strokeWidth={2} style={{ flexShrink: 0 }} />
+                  )}
                 </div>
                 <div
                   style={{

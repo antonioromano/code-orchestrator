@@ -1,5 +1,6 @@
 import type { SessionInfo } from '@remote-orchestrator/shared';
 import { StatusDot, Badge, Tooltip } from './primitives/index.js';
+import { AlertTriangle } from 'lucide-react';
 import { STATUS_COLORS } from '../constants/status.js';
 
 interface CollapsedSessionChipProps {
@@ -53,6 +54,9 @@ export function CollapsedSessionChip({ session, onUncollapse }: CollapsedSession
         >
           {session.name}
         </span>
+        {session.hasGitChanges && (
+          <AlertTriangle size={12} color="#f59e0b" strokeWidth={2} style={{ flexShrink: 0 }} />
+        )}
         <Badge label={session.agentType} />
       </button>
     </Tooltip>

@@ -45,16 +45,24 @@ export function useSessions(socket: TypedSocket) {
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     };
 
+    const handleGitStatus = ({ sessionId, hasGitChanges }: { sessionId: string; hasGitChanges: boolean }) => {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, hasGitChanges } : s)),
+      );
+    };
+
     socket.on('session:status', handleStatus);
     socket.on('session:exit', handleExit);
     socket.on('session:created', handleCreated);
     socket.on('session:deleted', handleDeleted);
+    socket.on('session:gitStatus', handleGitStatus);
 
     return () => {
       socket.off('session:status', handleStatus);
       socket.off('session:exit', handleExit);
       socket.off('session:created', handleCreated);
       socket.off('session:deleted', handleDeleted);
+      socket.off('session:gitStatus', handleGitStatus);
     };
   }, [socket]);
 

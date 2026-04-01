@@ -988,7 +988,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
             >
               {sessions.map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.name} — {s.folderPath.split('/').slice(-2).join('/')}
+                  {s.hasGitChanges ? '⚠ ' : ''}{s.name} — {s.folderPath.split('/').slice(-2).join('/')}
                 </option>
               ))}
             </select>

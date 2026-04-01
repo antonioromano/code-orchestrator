@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus, GitBranch, X } from 'lucide-react';
+import { Plus, GitBranch, X, AlertTriangle } from 'lucide-react';
 import { TerminalPanel } from './TerminalPanel.js';
 import { SessionGroup } from './SessionGroup.js';
 import { GitDiffPanel } from './GitDiffPanel.js';
@@ -117,6 +117,14 @@ function FocusedDiffWrapper({
       onRefresh={refresh}
       showSessionSelector={false}
     />
+  );
+}
+
+function GitDirtyIcon() {
+  return (
+    <Tooltip content="Uncommitted changes" position="bottom">
+      <AlertTriangle size={13} color="#f59e0b" strokeWidth={2} style={{ flexShrink: 0 }} />
+    </Tooltip>
   );
 }
 
@@ -342,6 +350,9 @@ export function Dashboard({
               <span style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
                 {focusedSession.name}
               </span>
+              {focusedSession.hasGitChanges && (
+                <GitDirtyIcon />
+              )}
               <span
                 style={{
                   fontSize: 'var(--text-sm)',
@@ -428,7 +439,7 @@ export function Dashboard({
             >
               {sessions.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} — {s.folderPath.split('/').slice(-2).join('/')}
+                  {s.hasGitChanges ? '⚠ ' : ''}{s.name} — {s.folderPath.split('/').slice(-2).join('/')}
                 </option>
               ))}
             </select>

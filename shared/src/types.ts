@@ -42,6 +42,7 @@ export interface SessionInfo {
   createdAt: string;
   agentType: AgentType;
   flags: string[];  // flags this session was created with
+  hasGitChanges?: boolean;
 }
 
 export interface CreateSessionRequest {
@@ -80,6 +81,7 @@ export interface ServerToClientEvents {
   'auth:required': (payload: { required: boolean }) => void;
   'update:available': (status: UpdateStatus) => void;
   'update:applying': () => void;
+  'session:gitStatus': (payload: { sessionId: string; hasGitChanges: boolean }) => void;
   // Ephemeral terminal responses
   'ephemeral:output': (payload: { id: string; data: string }) => void;
   'ephemeral:exit': (payload: { id: string; exitCode: number }) => void;

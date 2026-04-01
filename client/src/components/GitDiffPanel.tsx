@@ -5,10 +5,12 @@ import type { GitDiffResponse, SessionInfo } from '@remote-orchestrator/shared';
 import { DiffHunk } from './DiffHunk.js';
 import { DiffFileSection } from './DiffFileSection.js';
 import { SessionSidebar } from './SessionSidebar.js';
+import { ResizeDivider } from './ResizeDivider.js';
 import { CommitBar } from './CommitBar.js';
 import { TriStateCheckbox } from './primitives/index.js';
 import { useCommitMode, fileTriState } from '../hooks/useCommitMode.js';
 import type { FileMeta, TriState } from '../hooks/useCommitMode.js';
+import { useResizablePanel } from '../hooks/useResizablePanel.js';
 
 const MAX_LINES_BEFORE_TRUNCATE = 500;
 const NARROW_BREAKPOINT = 520;
@@ -61,7 +63,28 @@ export function GitDiffPanel({
   showSessionSelector = true,
 }: GitDiffPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileListRef = useRef<HTMLDivElement>(null);
   const [isNarrow, setIsNarrow] = useState(false);
+
+  const { size: sidebarWidth, isDragging: isSidebarDragging, handleMouseDown: handleSidebarMouseDown } = useResizablePanel({
+    containerRef,
+    defaultSize: 200,
+    minSize: 120,
+    maxSize: 350,
+    direction: 'left',
+    unit: 'px',
+    storageKey: 'gitdiff-sidebar-width',
+  });
+
+  const { size: fileListWidth, isDragging: isFileListDragging, handleMouseDown: handleFileListMouseDown } = useResizablePanel({
+    containerRef: fileListRef,
+    defaultSize: 220,
+    minSize: 150,
+    maxSize: 500,
+    direction: 'left',
+    unit: 'px',
+    storageKey: 'gitdiff-filelist-width',
+  });
   const [userSelectedKey, setUserSelectedKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFullKey, setShowFullKey] = useState<string | null>(null);
@@ -201,9 +224,7 @@ export function GitDiffPanel({
     filteredStaged.forEach((file) =>
       entries.push({ key: `staged:${file.to ?? file.from ?? ''}`, category: 'staged', file }),
     );
-    filteredBranch.forEach((file) =>
-      entries.push({ key: `branch:${file.to ?? file.from ?? ''}`, category: 'branch', file }),
-    );
+    // branch section intentionally omitted — already reflected in unstaged group
     filteredUntracked.forEach((filePath) =>
       entries.push({ key: `untracked:${filePath}`, category: 'untracked', filePath }),
     );
@@ -566,7 +587,7 @@ export function GitDiffPanel({
             >
               {(sessions ?? []).map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.name} — {s.folderPath.split('/').slice(-2).join('/')}
+                  {s.hasGitChanges ? '⚠ ' : ''}{s.name} — {s.folderPath.split('/').slice(-2).join('/')}
                 </option>
               ))}
             </select>
@@ -619,6 +640,30 @@ export function GitDiffPanel({
         /* Narrow layout: accordion file list */
         <>
           {searchInput}
+          {commitModeActive && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 12px',
+                borderBottom: '1px solid var(--color-border-base)',
+                flexShrink: 0,
+              }}
+            >
+              <TriStateCheckbox
+                checked={
+                  selectedFileCount === 0 ? false
+                  : selectedFileCount === allCommitFileMetas.length ? true
+                  : 'indeterminate'
+                }
+                onChange={() => selectedFileCount === allCommitFileMetas.length ? actions.clearAll() : actions.selectAll(allCommitFileMetas)}
+                size={11}
+                label="Select all files"
+              />
+              <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Select all</span>
+            </div>
+          )}
           <div style={{ flex: 1, overflow: 'auto', padding: '8px', minHeight: 0 }}>
             {error && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-muted)', gap: '8px' }}>
@@ -685,17 +730,9 @@ export function GitDiffPanel({
                 ))}
               </div>
             )}
-            {!error && filteredBranch.length > 0 && (
-              <div>
-                {sectionHeader('branch', 'Branch Changes (vs HEAD)', filteredBranch.length, filteredUnstaged.length > 0 || filteredStaged.length > 0)}
-                {!collapsedSections.has('branch') && filteredBranch.map((file, i) => (
-                  <DiffFileSection key={`branch-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} />
-                ))}
-              </div>
-            )}
             {!error && filteredUntracked.length > 0 && (
               <div>
-                {sectionHeader('untracked', 'Untracked Files', filteredUntracked.length, filteredUnstaged.length > 0 || filteredStaged.length > 0 || filteredBranch.length > 0)}
+                {sectionHeader('untracked', 'Untracked Files', filteredUntracked.length, filteredUnstaged.length > 0 || filteredStaged.length > 0)}
                 {!collapsedSections.has('untracked') && filteredUntracked.map((filePath, i) => (
                   <UntrackedFileRow
                     key={`untracked-${i}`}
@@ -730,17 +767,21 @@ export function GitDiffPanel({
       ) : (
         /* Wide layout: session sidebar | file list | content */
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
-          {/* Session sidebar (200px) */}
+          {/* Session sidebar (resizable) */}
           {showSessionSelector && (
-            <SessionSidebar
-              sessions={sessions ?? []}
-              activeSessionId={currentSessionId}
-              onSelectSession={onSelectSession}
-            />
+            <>
+              <SessionSidebar
+                sessions={sessions ?? []}
+                activeSessionId={currentSessionId}
+                onSelectSession={onSelectSession}
+                width={sidebarWidth}
+              />
+              <ResizeDivider isDragging={isSidebarDragging} onMouseDown={handleSidebarMouseDown} />
+            </>
           )}
 
-          {/* File list sidebar */}
-          <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border-base)', background: 'var(--color-bg-surface)', overflow: 'hidden' }}>
+          {/* File list sidebar (resizable) */}
+          <div ref={fileListRef} style={{ width: `${fileListWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--color-bg-surface)', overflow: 'hidden' }}>
             <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--color-border-base)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <input
                 className="diff-search-input"
@@ -765,6 +806,30 @@ export function GitDiffPanel({
                 {'\u21BB'}
               </button>
             </div>
+            {commitModeActive && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 10px',
+                  borderBottom: '1px solid var(--color-border-base)',
+                  flexShrink: 0,
+                }}
+              >
+                <TriStateCheckbox
+                  checked={
+                    selectedFileCount === 0 ? false
+                    : selectedFileCount === allCommitFileMetas.length ? true
+                    : 'indeterminate'
+                  }
+                  onChange={() => selectedFileCount === allCommitFileMetas.length ? actions.clearAll() : actions.selectAll(allCommitFileMetas)}
+                  size={11}
+                  label="Select all files"
+                />
+                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Select all</span>
+              </div>
+            )}
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
               {(error || (isEmpty && !isLoading)) && (
                 <div style={{ padding: '12px', fontSize: '12px', color: 'var(--color-text-muted)', textAlign: 'center' }}>
@@ -816,19 +881,9 @@ export function GitDiffPanel({
                   })}
                 </div>
               )}
-              {filteredBranch.length > 0 && (
-                <div>
-                  <SidebarSectionHeader label="Branch" count={filteredBranch.length} isCollapsed={collapsedSections.has('branch')} onToggle={() => toggleSection('branch')} topPad={filteredUnstaged.length > 0 || filteredStaged.length > 0} />
-                  {!collapsedSections.has('branch') && filteredBranch.map((file) => {
-                    const key = `branch:${file.to ?? file.from ?? ''}`;
-                    const fileName = file.to === '/dev/null' ? file.from : file.to;
-                    return <FileRow key={key} fileName={fileName ?? 'unknown'} isNew={!!file.new} isDeleted={!!file.deleted} additions={file.additions} deletions={file.deletions} isActive={selectedKey === key} onClick={() => setUserSelectedKey(key)} />;
-                  })}
-                </div>
-              )}
               {filteredUntracked.length > 0 && (
                 <div>
-                  <SidebarSectionHeader label="Untracked" count={filteredUntracked.length} isCollapsed={collapsedSections.has('untracked')} onToggle={() => toggleSection('untracked')} topPad={filteredUnstaged.length > 0 || filteredStaged.length > 0 || filteredBranch.length > 0} />
+                  <SidebarSectionHeader label="Untracked" count={filteredUntracked.length} isCollapsed={collapsedSections.has('untracked')} onToggle={() => toggleSection('untracked')} topPad={filteredUnstaged.length > 0 || filteredStaged.length > 0} />
                   {!collapsedSections.has('untracked') && filteredUntracked.map((filePath) => {
                     const key = `untracked:${filePath}`;
                     const shortName = filePath.split('/').pop() ?? filePath;
@@ -883,6 +938,8 @@ export function GitDiffPanel({
               )}
             </div>
           </div>
+
+          <ResizeDivider isDragging={isFileListDragging} onMouseDown={handleFileListMouseDown} />
 
           {/* Right content */}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

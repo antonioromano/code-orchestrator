@@ -62,6 +62,7 @@ ngrokService.onDisconnect = () => authService.clearAuth();
 
 // Git service
 const gitService = new GitService();
+sessionManager.setGitService(gitService);
 
 // Update service
 const updateService = new UpdateService();

@@ -15,6 +15,7 @@ import { SessionStore, type PersistedSession } from '../persistence/SessionStore
 import { ConfigStore } from '../persistence/ConfigStore.js';
 import { AgentRegistry } from './AgentRegistry.js';
 import { cleanupSessionDimensions } from '../socket/handler.js';
+import type { GitService } from './GitService.js';
 
 interface ManagedSession {
   id: string;
@@ -29,6 +30,8 @@ interface ManagedSession {
   outputBuffer: string;
 }
 
+const GIT_POLL_INTERVAL_MS = 10_000;
+
 export class SessionManager {
   private sessions = new Map<string, ManagedSession>();
   private ptyManager = new PtyManager();
@@ -36,6 +39,9 @@ export class SessionManager {
   private store: SessionStore;
   private configStore: ConfigStore;
   private io: Server<ClientToServerEvents, ServerToClientEvents> | null = null;
+  private gitService: GitService | null = null;
+  private gitDirtyMap = new Map<string, boolean>();
+  private gitPollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(dataDir: string, configStore: ConfigStore) {
     this.store = new SessionStore(path.join(dataDir, 'sessions.json'));
@@ -44,6 +50,28 @@ export class SessionManager {
 
   setIo(io: Server<ClientToServerEvents, ServerToClientEvents>): void {
     this.io = io;
+  }
+
+  setGitService(gitService: GitService): void {
+    this.gitService = gitService;
+    this.gitPollTimer = setInterval(() => this.pollGitStatus(), GIT_POLL_INTERVAL_MS);
+  }
+
+  private async pollGitStatus(): Promise<void> {
+    if (!this.gitService) return;
+    for (const session of this.sessions.values()) {
+      if (session.status === 'exited') continue;
+      try {
+        const dirty = await this.gitService.hasChanges(session.folderPath);
+        const prev = this.gitDirtyMap.get(session.id);
+        if (dirty !== prev) {
+          this.gitDirtyMap.set(session.id, dirty);
+          this.io?.emit('session:gitStatus', { sessionId: session.id, hasGitChanges: dirty });
+        }
+      } catch {
+        // non-git folder or git unavailable — ignore
+      }
+    }
   }
 
   async createSession(folderPath: string, name?: string, agentType?: string, flags?: string[], existingId?: string, existingCreatedAt?: string): Promise<SessionInfo> {
@@ -116,6 +144,7 @@ export class SessionManager {
     session.stateDetector.destroy();
     this.ptyManager.kill(session.pty);
     this.sessions.delete(id);
+    this.gitDirtyMap.delete(id);
     cleanupSessionDimensions(id);
     await this.persistSessions();
 
@@ -230,10 +259,15 @@ export class SessionManager {
       createdAt: session.createdAt,
       agentType: session.agentType,
       flags: session.flags,
+      hasGitChanges: this.gitDirtyMap.get(session.id) ?? false,
     };
   }
 
   async shutdown(): Promise<void> {
+    if (this.gitPollTimer) {
+      clearInterval(this.gitPollTimer);
+      this.gitPollTimer = null;
+    }
     for (const session of this.sessions.values()) {
       try {
         session.stateDetector.destroy();

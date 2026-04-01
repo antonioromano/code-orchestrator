@@ -343,4 +343,13 @@ export class GitService {
       return { lastMessage: '', isFirstCommit: true };
     }
   }
+
+  async hasChanges(folderPath: string): Promise<boolean> {
+    try {
+      const output = await execGit(['status', '--porcelain'], folderPath);
+      return output.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
 }

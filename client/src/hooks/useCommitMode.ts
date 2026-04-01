@@ -101,7 +101,7 @@ export function chunkTriState(chunkSel: Set<number> | undefined, totalChanges: n
 
 export function useCommitMode(): UseCommitModeResult {
   const [state, setState] = useState<CommitModeState>({
-    isActive: false,
+    isActive: true,
     selections: new Map(),
     status: 'idle',
     errorMessage: null,
