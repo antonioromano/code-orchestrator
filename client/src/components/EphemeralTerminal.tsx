@@ -5,6 +5,7 @@ import { X as XIcon, Terminal } from 'lucide-react';
 import { useEphemeralTerminal } from '../hooks/useEphemeralTerminal.js';
 
 import '@xterm/xterm/css/xterm.css';
+import './EphemeralTerminal.css';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -20,7 +21,7 @@ export function EphemeralTerminal({ cwd, socket, theme, onClose }: EphemeralTerm
   // Stable ID for this terminal instance — regenerated if cwd changes (new mount)
   const id = useMemo(() => crypto.randomUUID(), [cwd]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEphemeralTerminal(containerRef, {
+  const { terminalRef } = useEphemeralTerminal(containerRef, {
     id,
     cwd,
     socket: socket!,
@@ -81,7 +82,12 @@ export function EphemeralTerminal({ cwd, socket, theme, onClose }: EphemeralTerm
       </div>
 
       {/* Terminal */}
-      <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', padding: '4px' }} />
+      <div
+        ref={containerRef}
+        className="ephemeral-terminal-host"
+        onMouseDown={() => terminalRef.current?.focus()}
+        style={{ flex: 1, minHeight: 0, padding: '4px', cursor: 'text' }}
+      />
     </div>
   );
 }

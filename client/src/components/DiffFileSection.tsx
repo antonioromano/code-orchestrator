@@ -26,9 +26,10 @@ interface DiffFileSectionProps {
   searchQuery?: string;
   commitMode?: CommitModeFileSectionProps;
   forceShowFull?: boolean;
+  onRevertChunk?: (chunkIndex: number, totalChanges: number) => void;
 }
 
-export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, searchQuery, commitMode, forceShowFull }: DiffFileSectionProps) {
+export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, searchQuery, commitMode, forceShowFull, onRevertChunk }: DiffFileSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [showFull, setShowFull] = useState(forceShowFull ?? false);
 
@@ -174,6 +175,7 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
                           }
                         : undefined
                     }
+                    onRevertHunk={!commitMode && onRevertChunk ? () => onRevertChunk(i, totalChanges) : undefined}
                   />
                 );
               })}

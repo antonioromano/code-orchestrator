@@ -63,7 +63,7 @@ interface UseEphemeralTerminalOptions {
 export function useEphemeralTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   options: UseEphemeralTerminalOptions,
-) {
+): { terminalRef: React.RefObject<Terminal | null> } {
   const { id, cwd, socket, theme } = options;
   const themeRef = useRef(theme);
   themeRef.current = theme;
@@ -72,6 +72,10 @@ export function useEphemeralTerminal(
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    // Prevents stale requestAnimationFrame callbacks (from React Strict Mode's
+    // double-invoke) from emitting ephemeral:spawn after this effect is torn down.
+    let cancelled = false;
 
     const fitAddon = new FitAddon();
     const terminal = new Terminal({
@@ -85,28 +89,74 @@ export function useEphemeralTerminal(
 
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
-    terminal.open(container);
 
+    // Open synchronously so xterm's DOM (including the hidden textarea for
+    // keyboard input) exists immediately — matching the pattern used by
+    // useTerminal.ts for session terminals. This makes click-to-focus work
+    // before the shell has even spawned.
+    terminal.open(container);
     terminalRef.current = terminal;
 
-    requestAnimationFrame(() => {
+    // Fix keyboard input: xterm positions its textarea at left:-9999em via CSS.
+    // If an overflow:hidden ancestor clips that position, the textarea can't
+    // receive focus. Setting position:fixed via inline setProperty('important')
+    // escapes all overflow contexts. A MutationObserver re-applies the fix if
+    // xterm's _syncTextArea() overwrites the inline styles (e.g. for IME support).
+    type ContainerWithObserver = HTMLDivElement & { _textareaObserver?: MutationObserver };
+    const applyTextareaFix = (el: HTMLElement) => {
+      if (el.style.getPropertyPriority('position') !== 'important') {
+        el.style.setProperty('position', 'fixed', 'important');
+        el.style.setProperty('left', '0', 'important');
+        el.style.setProperty('top', '0', 'important');
+      }
+    };
+    const ta = container.querySelector<HTMLElement>('.xterm-helper-textarea');
+    if (ta) {
+      applyTextareaFix(ta);
+      const textareaObserver = new MutationObserver(() => applyTextareaFix(ta));
+      textareaObserver.observe(ta, { attributes: true, attributeFilter: ['style'] });
+      (container as ContainerWithObserver)._textareaObserver = textareaObserver;
+    }
+
+    // Wire up keyboard input immediately after open()
+    const onDataDisposable = terminal.onData((data) => {
+      socket.emit('ephemeral:input', { id, data });
+    });
+
+    // Defer fit + spawn until the container has non-zero dimensions. The shell
+    // is spawned only after fit() so the prompt appears at the correct position
+    // in the sized terminal, not in the center of an oversized container.
+    let focusedOnOutput = false;
+    const handleOutput = ({ id: eid, data }: { id: string; data: string }) => {
+      if (eid !== id) return;
+      terminal.write(data);
+      // Fallback focus: guarantee focus once the shell has produced output,
+      // in case the initial terminal.focus() call below didn't stick.
+      if (!focusedOnOutput) {
+        focusedOnOutput = true;
+        terminal.focus();
+      }
+    };
+    socket.on('ephemeral:output', handleOutput);
+
+    let spawnAttempts = 0;
+    const trySpawn = () => {
+      if (cancelled) return;
       if (container.offsetWidth > 0 && container.offsetHeight > 0) {
         fitAddon.fit();
         socket.emit('ephemeral:spawn', { id, cwd });
         socket.emit('ephemeral:resize', { id, cols: terminal.cols, rows: terminal.rows });
+        terminal.focus();
+      } else if (spawnAttempts < 10) {
+        spawnAttempts++;
+        setTimeout(trySpawn, 50);
       } else {
+        // Fallback: spawn without confirmed dimensions
         socket.emit('ephemeral:spawn', { id, cwd });
+        terminal.focus();
       }
-    });
-
-    const handleOutput = ({ id: eid, data }: { id: string; data: string }) => {
-      if (eid === id) terminal.write(data);
     };
-    socket.on('ephemeral:output', handleOutput);
-
-    const onDataDisposable = terminal.onData((data) => {
-      socket.emit('ephemeral:input', { id, data });
-    });
+    requestAnimationFrame(trySpawn);
 
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const resizeObserver = new ResizeObserver(() => {
@@ -121,8 +171,10 @@ export function useEphemeralTerminal(
     resizeObserver.observe(container);
 
     return () => {
+      cancelled = true;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
+      (container as ContainerWithObserver)._textareaObserver?.disconnect();
       onDataDisposable.dispose();
       socket.off('ephemeral:output', handleOutput);
       socket.emit('ephemeral:kill', { id });
@@ -137,4 +189,6 @@ export function useEphemeralTerminal(
       terminalRef.current.options.theme = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
     }
   }, [theme]);
+
+  return { terminalRef };
 }

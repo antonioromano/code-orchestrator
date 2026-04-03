@@ -19,9 +19,10 @@ interface NavTabsProps {
   activeTab: AppTab;
   onTabChange: (tab: AppTab) => void;
   sessionCount?: number;
+  waitingCount?: number;
 }
 
-export function NavTabs({ activeTab, onTabChange, sessionCount }: NavTabsProps) {
+export function NavTabs({ activeTab, onTabChange, sessionCount, waitingCount }: NavTabsProps) {
   return (
     <div
       role="tablist"
@@ -97,6 +98,20 @@ export function NavTabs({ activeTab, onTabChange, sessionCount }: NavTabsProps) 
                 }}
               >
                 {sessionCount}
+              </span>
+            )}
+            {tab.id === 'sessions' && waitingCount !== undefined && waitingCount > 0 && (
+              <span
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  background: 'rgba(251, 146, 60, 0.15)',
+                  color: '#fb923c',
+                  padding: '1px 5px',
+                  borderRadius: 'var(--radius-pill)',
+                  fontWeight: 600,
+                }}
+              >
+                {waitingCount}
               </span>
             )}
           </button>

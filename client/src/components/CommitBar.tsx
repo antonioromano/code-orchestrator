@@ -345,7 +345,7 @@ export function CommitBar({
               }}
             >
               <ArrowUpFromLine size={12} strokeWidth={2} />
-              Push
+              Commit &amp; Push
             </button>
           </div>
         </div>

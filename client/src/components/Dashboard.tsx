@@ -14,10 +14,11 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus, GitBranch, X, AlertTriangle } from 'lucide-react';
+import { Plus, GitBranch, FolderOpen, X, AlertTriangle } from 'lucide-react';
 import { TerminalPanel } from './TerminalPanel.js';
 import { SessionGroup } from './SessionGroup.js';
 import { GitDiffPanel } from './GitDiffPanel.js';
+import { ExplorerPanel } from './ExplorerPanel.js';
 import { useGitDiff } from '../hooks/useGitDiff.js';
 import { Tooltip } from './primitives/index.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
@@ -57,6 +58,8 @@ interface DashboardProps {
   onToggleDiff: (sessionId: string) => void;
   onToggleDiffFullscreen: (sessionId: string) => void;
   onCloseDiff: (sessionId: string) => void;
+  getExplorerState: (sessionId: string) => DiffState;
+  onToggleExplorer: (sessionId: string) => void;
 }
 
 function groupSessionsByFolder(sessions: SessionInfo[]): Map<string, SessionInfo[]> {
@@ -144,6 +147,8 @@ export function Dashboard({
   onToggleDiff,
   onToggleDiffFullscreen,
   onCloseDiff,
+  getExplorerState,
+  onToggleExplorer,
 }: DashboardProps) {
   const isFocused = !!focusedSessionId;
   const focusedSession = isFocused ? sessions.find((s) => s.id === focusedSessionId) : null;
@@ -179,6 +184,16 @@ export function Dashboard({
     direction: 'right',
     unit: '%',
     storageKey: 'dashboard-diff-width',
+  });
+
+  const { size: explorerPanelWidth, isDragging: isExplorerDragging, handleMouseDown: handleExplorerDividerMouseDown } = useResizablePanel({
+    containerRef: splitContainerRef,
+    defaultSize: 50,
+    minSize: 25,
+    maxSize: 75,
+    direction: 'right',
+    unit: '%',
+    storageKey: 'dashboard-explorer-width',
   });
 
   const { size: sidebarWidth, isDragging: isSidebarDragging, handleMouseDown: handleSidebarDividerMouseDown } = useResizablePanel({
@@ -403,6 +418,30 @@ export function Dashboard({
                   Diff
                 </button>
               </Tooltip>
+              <Tooltip content="Toggle explorer view" position="bottom">
+                <button
+                  onClick={() => onToggleExplorer(focusedSession.id)}
+                  style={{
+                    ...focusBarBtnStyle,
+                    background: getExplorerState(focusedSession.id).isOpen ? 'var(--color-accent)' : 'transparent',
+                    color: getExplorerState(focusedSession.id).isOpen ? '#ffffff' : 'var(--color-text-secondary)',
+                    borderColor: getExplorerState(focusedSession.id).isOpen ? 'transparent' : 'var(--color-border-subtle)',
+                  }}
+                  aria-label="Toggle explorer view"
+                  onMouseEnter={(e) => {
+                    if (!getExplorerState(focusedSession.id).isOpen)
+                      e.currentTarget.style.background = 'var(--color-bg-elevated)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = getExplorerState(focusedSession.id).isOpen
+                      ? 'var(--color-accent)'
+                      : 'transparent';
+                  }}
+                >
+                  <FolderOpen size={13} strokeWidth={1.75} />
+                  Explorer
+                </button>
+              </Tooltip>
             </div>
           </div>
 
@@ -464,6 +503,19 @@ export function Dashboard({
               <GitBranch size={13} strokeWidth={1.75} />
             </button>
             <button
+              onClick={() => onToggleExplorer(focusedSession.id)}
+              style={{
+                ...focusBarBtnStyle,
+                padding: '4px 8px',
+                background: getExplorerState(focusedSession.id).isOpen ? 'var(--color-accent)' : 'transparent',
+                color: getExplorerState(focusedSession.id).isOpen ? '#ffffff' : 'var(--color-text-secondary)',
+                borderColor: getExplorerState(focusedSession.id).isOpen ? 'transparent' : 'var(--color-border-subtle)',
+              }}
+              aria-label="Toggle explorer view"
+            >
+              <FolderOpen size={13} strokeWidth={1.75} />
+            </button>
+            <button
               onClick={handleUnfocus}
               style={{ ...focusBarBtnStyle, padding: '4px 8px', color: 'var(--color-text-muted)' }}
               aria-label="Exit focus mode"
@@ -506,7 +558,7 @@ export function Dashboard({
             />
             <ResizeDivider isDragging={isSidebarDragging} onMouseDown={handleSidebarDividerMouseDown} />
 
-            {/* Terminal + Diff area */}
+            {/* Terminal + Diff/Explorer split area */}
             <div
               ref={splitContainerRef}
               style={{
@@ -515,60 +567,96 @@ export function Dashboard({
                 display: 'flex',
                 flexDirection: 'row',
                 overflow: 'hidden',
-                cursor: isDragging ? 'col-resize' : undefined,
-                userSelect: isDragging ? 'none' : undefined,
+                cursor: (isDragging || isExplorerDragging) ? 'col-resize' : undefined,
+                userSelect: (isDragging || isExplorerDragging) ? 'none' : undefined,
               }}
             >
-              {!(getDiffState(focusedSession.id).isOpen && getDiffState(focusedSession.id).isFullscreen) && (
-                <div
-                  style={{
-                    width: getDiffState(focusedSession.id).isOpen ? `${100 - diffPanelWidth}%` : undefined,
-                    flex: getDiffState(focusedSession.id).isOpen ? undefined : 1,
-                    minHeight: 0,
-                    minWidth: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    padding: 'var(--space-2)',
-                  }}
-                >
-                  <ErrorBoundary key={focusedSession.id} label={focusedSession.name}>
-                    <TerminalPanel
-                      session={focusedSession}
-                      socket={socket}
-                      theme={theme}
-                      onDelete={onDeleteSession}
-                      onRestart={onRestartSession}
-                      onUnfocus={handleUnfocus}
-                      onToggleDiff={onToggleDiff}
-                      isDiffOpen={getDiffState(focusedSession.id).isOpen}
-                    />
-                  </ErrorBoundary>
-                </div>
-              )}
-              {getDiffState(focusedSession.id).isOpen && !getDiffState(focusedSession.id).isFullscreen && (
-                <ResizeDivider isDragging={isDragging} onMouseDown={handleDividerMouseDown} />
-              )}
-              {getDiffState(focusedSession.id).isOpen && (
-                <div
-                  style={{
-                    width: `${diffPanelWidth}%`,
-                    minWidth: '200px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                  }}
-                >
-                  <FocusedDiffWrapper
-                    sessionId={focusedSession.id}
-                    sessionStatus={focusedSession.status}
-                    sessions={sessions}
-                    onSelectSession={handleSwitchFocus}
-                    diffState={getDiffState(focusedSession.id)}
-                    theme={theme}
-                    onClose={() => onCloseDiff(focusedSession.id)}
-                    onToggleFullscreen={() => onToggleDiffFullscreen(focusedSession.id)}
-                  />
-                </div>
-              )}
+              {(() => {
+                const diffState = getDiffState(focusedSession.id);
+                const explorerState = getExplorerState(focusedSession.id);
+                const diffFullscreen = diffState.isOpen && diffState.isFullscreen;
+                const explorerFullscreen = explorerState.isOpen && explorerState.isFullscreen;
+                const showTerminal = !diffFullscreen && !explorerFullscreen;
+                const splitPanelWidth = diffState.isOpen ? diffPanelWidth : explorerState.isOpen ? explorerPanelWidth : 0;
+
+                return (
+                  <>
+                    {showTerminal && (
+                      <div
+                        style={{
+                          width: (diffState.isOpen || explorerState.isOpen) ? `${100 - splitPanelWidth}%` : undefined,
+                          flex: (diffState.isOpen || explorerState.isOpen) ? undefined : 1,
+                          minHeight: 0,
+                          minWidth: 0,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: 'var(--space-2)',
+                        }}
+                      >
+                        <ErrorBoundary key={focusedSession.id} label={focusedSession.name}>
+                          <TerminalPanel
+                            session={focusedSession}
+                            socket={socket}
+                            theme={theme}
+                            onDelete={onDeleteSession}
+                            onRestart={onRestartSession}
+                            onUnfocus={handleUnfocus}
+                            onToggleDiff={onToggleDiff}
+                            isDiffOpen={diffState.isOpen}
+                            onToggleExplorer={onToggleExplorer}
+                            isExplorerOpen={explorerState.isOpen}
+                          />
+                        </ErrorBoundary>
+                      </div>
+                    )}
+                    {diffState.isOpen && !diffFullscreen && (
+                      <ResizeDivider isDragging={isDragging} onMouseDown={handleDividerMouseDown} />
+                    )}
+                    {diffState.isOpen && (
+                      <div
+                        style={{
+                          width: `${diffPanelWidth}%`,
+                          minWidth: '200px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                        }}
+                      >
+                        <FocusedDiffWrapper
+                          sessionId={focusedSession.id}
+                          sessionStatus={focusedSession.status}
+                          sessions={sessions}
+                          onSelectSession={handleSwitchFocus}
+                          diffState={diffState}
+                          theme={theme}
+                          onClose={() => onCloseDiff(focusedSession.id)}
+                          onToggleFullscreen={() => onToggleDiffFullscreen(focusedSession.id)}
+                        />
+                      </div>
+                    )}
+                    {explorerState.isOpen && !explorerFullscreen && (
+                      <ResizeDivider isDragging={isExplorerDragging} onMouseDown={handleExplorerDividerMouseDown} />
+                    )}
+                    {explorerState.isOpen && (
+                      <div
+                        style={{
+                          width: `${explorerPanelWidth}%`,
+                          minWidth: '200px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                        }}
+                      >
+                        <ExplorerPanel
+                          embedded
+                          sessions={sessions}
+                          theme={theme}
+                          focusedSessionId={focusedSession.id}
+                          socket={socket}
+                        />
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
           </div>
@@ -633,6 +721,7 @@ export function Dashboard({
                     onFocusSession={onFocusSession}
                     onCollapse={collapse}
                     onToggleDiff={onToggleDiff}
+                    onToggleExplorer={onToggleExplorer}
                     focusedSessionId={focusedSessionId}
                   />
                 ))

@@ -1,7 +1,9 @@
 import { execFile } from 'child_process';
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
-import type { GitDiffResponse, PatchSelectionRequest, PatchOperationResponse, CommitResponse, GitLogResponse } from '@remote-orchestrator/shared';
+import { appendFile } from 'fs/promises';
+import path from 'path';
+import type { GitDiffResponse, PatchSelectionRequest, PatchOperationResponse, CommitResponse, GitLogResponse, GitBranchesResponse } from '@remote-orchestrator/shared';
 
 function findGit(): string {
   try {
@@ -350,6 +352,81 @@ export class GitService {
       return output.trim().length > 0;
     } catch {
       return false;
+    }
+  }
+
+  async getBranches(folderPath: string): Promise<GitBranchesResponse> {
+    try {
+      const output = await execGit(['branch'], folderPath);
+      const lines = output.split('\n').map(l => l.trim()).filter(Boolean);
+      let currentBranch = '';
+      const branches: string[] = [];
+      for (const line of lines) {
+        if (line.startsWith('* ')) {
+          const name = line.slice(2).trim();
+          currentBranch = name;
+          // Don't include detached HEAD as a selectable branch
+          if (!name.startsWith('(')) {
+            branches.push(name);
+          }
+        } else {
+          branches.push(line);
+        }
+      }
+
+      let behindCount: number | undefined;
+      try {
+        const countStr = await execGit(['rev-list', 'HEAD..@{u}', '--count'], folderPath);
+        const n = parseInt(countStr.trim(), 10);
+        if (!isNaN(n)) behindCount = n;
+      } catch {
+        // no upstream tracking branch — leave undefined
+      }
+
+      return { branches: branches.sort(), currentBranch, behindCount };
+    } catch {
+      return { branches: [], currentBranch: '' };
+    }
+  }
+
+  async pull(folderPath: string): Promise<PatchOperationResponse> {
+    try {
+      await execGitWithStderr(['pull'], folderPath);
+      return { success: true };
+    } catch (err) {
+      const e = err as { message?: string; stderr?: string };
+      return { success: false, error: e.stderr || e.message || 'Pull failed' };
+    }
+  }
+
+  async checkoutBranch(folderPath: string, branch: string): Promise<PatchOperationResponse> {
+    try {
+      await execGitWithStderr(['checkout', branch], folderPath);
+      return { success: true };
+    } catch (err) {
+      const e = err as { message?: string; stderr?: string };
+      return { success: false, error: e.stderr || e.message || 'Checkout failed' };
+    }
+  }
+
+  async createBranch(folderPath: string, name: string, from?: string): Promise<PatchOperationResponse> {
+    try {
+      const args = from ? ['checkout', '-b', name, from] : ['checkout', '-b', name];
+      await execGitWithStderr(args, folderPath);
+      return { success: true };
+    } catch (err) {
+      const e = err as { message?: string; stderr?: string };
+      return { success: false, error: e.stderr || e.message || 'Create branch failed' };
+    }
+  }
+
+  async addToGitignore(folderPath: string, filePath: string): Promise<PatchOperationResponse> {
+    try {
+      const gitignorePath = path.join(folderPath, '.gitignore');
+      await appendFile(gitignorePath, `${filePath}\n`);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
     }
   }
 }

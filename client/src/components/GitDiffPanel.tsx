@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import parseDiff from 'parse-diff';
-import { GitCommit } from 'lucide-react';
-import type { GitDiffResponse, SessionInfo } from '@remote-orchestrator/shared';
+import { GitCommit, EyeOff } from 'lucide-react';
+import type { GitDiffResponse, SessionInfo, GitBranchesResponse } from '@remote-orchestrator/shared';
+import { api } from '../services/api.js';
 import { DiffHunk } from './DiffHunk.js';
 import { DiffFileSection } from './DiffFileSection.js';
 import { SessionSidebar } from './SessionSidebar.js';
@@ -92,6 +93,14 @@ export function GitDiffPanel({
   const [collapsedSections, setCollapsedSections] = useState<Set<SectionKey>>(new Set());
   const [untrackedContent, setUntrackedContent] = useState<Map<string, string | 'loading' | 'error'>>(new Map());
   const [trackingFile, setTrackingFile] = useState<string | null>(null);
+  const [ignoringFile, setIgnoringFile] = useState<string | null>(null);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [currentBranch, setCurrentBranch] = useState('');
+  const [behindCount, setBehindCount] = useState<number | undefined>(undefined);
+  const [branchLoading, setBranchLoading] = useState(false);
+  const [creatingBranch, setCreatingBranch] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [branchError, setBranchError] = useState('');
 
   const commitModeResult = useCommitMode();
   const { commitMode, actions, selectedFileCount } = commitModeResult;
@@ -274,6 +283,97 @@ export function GitDiffPanel({
     }
   }
 
+  async function handleIgnoreFile(filePath: string) {
+    if (ignoringFile) return;
+    setIgnoringFile(filePath);
+    try {
+      await fetch(`/api/sessions/${currentSessionId}/git-ignore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath }),
+      });
+      onRefresh();
+    } finally {
+      setIgnoringFile(null);
+    }
+  }
+
+  const loadBranches = useCallback(async () => {
+    if (!currentSessionId) return;
+    try {
+      const data: GitBranchesResponse = await api.getGitBranches(currentSessionId);
+      setBranches(data.branches);
+      setCurrentBranch(data.currentBranch);
+      setBehindCount(data.behindCount);
+    } catch {
+      // silently ignore (non-git repos, etc.)
+    }
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    loadBranches();
+  }, [loadBranches]);
+
+  async function handleBranchChange(branch: string) {
+    if (branchLoading || branch === currentBranch) return;
+    setBranchLoading(true);
+    setBranchError('');
+    try {
+      const result = await api.gitCheckout(currentSessionId, branch);
+      if (result.success) {
+        await loadBranches();
+        onRefresh();
+      } else {
+        setBranchError(result.error ?? 'Checkout failed');
+        setTimeout(() => setBranchError(''), 5000);
+      }
+    } finally {
+      setBranchLoading(false);
+    }
+  }
+
+  async function handleCreateBranch() {
+    const name = newBranchName.trim();
+    if (!name) return;
+    if (/\s/.test(name)) {
+      setBranchError('Branch name cannot contain spaces');
+      return;
+    }
+    setBranchLoading(true);
+    setBranchError('');
+    try {
+      const result = await api.gitCreateBranch(currentSessionId, name);
+      if (result.success) {
+        setCreatingBranch(false);
+        setNewBranchName('');
+        await loadBranches();
+        onRefresh();
+      } else {
+        setBranchError(result.error ?? 'Create branch failed');
+      }
+    } finally {
+      setBranchLoading(false);
+    }
+  }
+
+  async function handlePull() {
+    if (branchLoading) return;
+    setBranchLoading(true);
+    setBranchError('');
+    try {
+      const result = await api.gitPull(currentSessionId);
+      if (result.success) {
+        await loadBranches();
+        onRefresh();
+      } else {
+        setBranchError(result.error ?? 'Pull failed');
+        setTimeout(() => setBranchError(''), 5000);
+      }
+    } finally {
+      setBranchLoading(false);
+    }
+  }
+
   const headerBtnStyle = {
     background: 'none',
     border: 'none',
@@ -327,6 +427,16 @@ export function GitDiffPanel({
             <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
               {entry.filePath}
             </span>
+            <button
+              title={ignoringFile === entry.filePath ? 'Ignoring…' : 'Add to .gitignore'}
+              onClick={() => handleIgnoreFile(entry.filePath)}
+              disabled={!!ignoringFile}
+              style={{ background: 'none', border: 'none', cursor: ignoringFile === entry.filePath ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', lineHeight: 1, padding: '0 4px', flexShrink: 0, opacity: ignoringFile === entry.filePath ? 0.4 : 1, display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}
+              onMouseEnter={(e) => { if (!ignoringFile) e.currentTarget.style.color = 'var(--color-warning)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+            >
+              {ignoringFile === entry.filePath ? '…' : <><EyeOff size={11} strokeWidth={1.75} /><span style={{ fontFamily: 'var(--font-mono)' }}>.gitignore</span></>}
+            </button>
           </div>
           <div style={{ overflow: 'auto', flex: 1 }}>
             {contentVal === 'loading' || contentVal === undefined ? (
@@ -440,6 +550,10 @@ export function GitDiffPanel({
                   onRefresh();
                 },
               } : undefined;
+              const onRevertHunk = !commitModeActive && entry.category === 'unstaged' ? async () => {
+                await actions.discardChunk(currentSessionId, filePath, i, totalChanges);
+                onRefresh();
+              } : undefined;
               return (
                 <DiffHunk
                   key={i}
@@ -447,6 +561,7 @@ export function GitDiffPanel({
                   theme={theme}
                   searchQuery={searchLower || undefined}
                   commitMode={commitModeForHunk}
+                  onRevertHunk={onRevertHunk}
                 />
               );
             })}
@@ -465,6 +580,93 @@ export function GitDiffPanel({
       </>
     );
   };
+
+  const inputStyle = {
+    flex: 1,
+    boxSizing: 'border-box' as const,
+    fontSize: '12px',
+    padding: '3px 8px',
+    border: '1px solid var(--color-border-subtle)',
+    borderRadius: '4px',
+    background: 'var(--color-bg-input)',
+    color: 'var(--color-text-primary)',
+    outline: 'none',
+    fontFamily: 'var(--font-mono)',
+  };
+
+  const branchRow = branches.length > 0 || creatingBranch ? (
+    <div style={{ padding: '4px 8px 4px', flexShrink: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
+        {!creatingBranch ? (
+          <>
+            <select
+              value={currentBranch}
+              onChange={e => handleBranchChange(e.target.value)}
+              disabled={branchLoading}
+              style={{
+                ...inputStyle,
+                minWidth: 0,
+                cursor: branchLoading ? 'not-allowed' : 'pointer',
+                opacity: branchLoading ? 0.6 : 1,
+              }}
+            >
+              {branches.map(b => <option key={b} value={b}>{b}</option>)}
+              {currentBranch && !branches.includes(currentBranch) && (
+                <option value={currentBranch}>{currentBranch}</option>
+              )}
+            </select>
+            <button
+              onClick={handlePull}
+              disabled={branchLoading}
+              title={behindCount ? `Pull (${behindCount} commit${behindCount !== 1 ? 's' : ''} behind)` : 'Pull'}
+              style={{ ...headerBtnStyle, flexShrink: 0, position: 'relative' }}
+            >
+              ↓
+              {!!behindCount && behindCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-2px',
+                  right: '-1px',
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'var(--color-accent)',
+                  pointerEvents: 'none',
+                }} />
+              )}
+            </button>
+            <button
+              onClick={() => { setCreatingBranch(true); setNewBranchName(''); setBranchError(''); }}
+              title="Create new branch"
+              style={{ ...headerBtnStyle, flexShrink: 0 }}
+            >+</button>
+          </>
+        ) : (
+          <>
+            <input
+              autoFocus
+              value={newBranchName}
+              onChange={e => setNewBranchName(e.target.value)}
+              placeholder="new-branch-name"
+              disabled={branchLoading}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); handleCreateBranch(); }
+                if (e.key === 'Escape') { setCreatingBranch(false); setBranchError(''); }
+              }}
+              style={{ ...inputStyle, minWidth: 0 }}
+            />
+            <button onClick={handleCreateBranch} disabled={branchLoading} title="Confirm" style={{ ...headerBtnStyle, flexShrink: 0 }}>✓</button>
+            <button onClick={() => { setCreatingBranch(false); setBranchError(''); }} title="Cancel" style={{ ...headerBtnStyle, flexShrink: 0 }}>✕</button>
+          </>
+        )}
+      </div>
+      {branchError && (
+        <div style={{ fontSize: '11px', color: 'var(--color-error)', marginTop: '2px', padding: '0 2px' }}>
+          {branchError}
+        </div>
+      )}
+    </div>
+  ) : null;
 
   const searchInput = (
     <div style={{ padding: '4px 8px 6px', borderBottom: '1px solid var(--color-border-base)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -639,6 +841,7 @@ export function GitDiffPanel({
       {isNarrow ? (
         /* Narrow layout: accordion file list */
         <>
+          {branchRow}
           {searchInput}
           {commitModeActive && (
             <div
@@ -673,7 +876,7 @@ export function GitDiffPanel({
                 </button>
               </div>
             )}
-            {!error && isEmpty && !isLoading && (
+            {!error && isEmpty && (diff !== null || !isLoading) && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-muted)', fontSize: '14px' }}>
                 No changes
               </div>
@@ -717,6 +920,10 @@ export function GitDiffPanel({
                       searchQuery={searchLower || undefined}
                       commitMode={commitModeProps}
                       forceShowFull={commitModeActive}
+                      onRevertChunk={!commitModeActive ? async (chunkIndex, totalChanges) => {
+                        await actions.discardChunk(currentSessionId, filePath, chunkIndex, totalChanges);
+                        onRefresh();
+                      } : undefined}
                     />
                   );
                 })}
@@ -741,6 +948,8 @@ export function GitDiffPanel({
                     theme={theme}
                     onTrack={() => handleTrackFile(filePath)}
                     isTracking={trackingFile === filePath}
+                    onIgnore={() => handleIgnoreFile(filePath)}
+                    isIgnoring={ignoringFile === filePath}
                     commitModeToggle={commitModeActive ? {
                       isSelected: commitMode.selections.has(filePath),
                       onToggle: () => actions.toggleFile(filePath, { filePath, hunks: [], isUntracked: true }),
@@ -782,6 +991,7 @@ export function GitDiffPanel({
 
           {/* File list sidebar (resizable) */}
           <div ref={fileListRef} style={{ width: `${fileListWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--color-bg-surface)', overflow: 'hidden' }}>
+            {branchRow}
             <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--color-border-base)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <input
                 className="diff-search-input"
@@ -831,7 +1041,7 @@ export function GitDiffPanel({
               </div>
             )}
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-              {(error || (isEmpty && !isLoading)) && (
+              {(error || (isEmpty && (diff !== null || !isLoading))) && (
                 <div style={{ padding: '12px', fontSize: '12px', color: 'var(--color-text-muted)', textAlign: 'center' }}>
                   {error ? 'Error loading' : 'No changes'}
                 </div>
@@ -931,6 +1141,14 @@ export function GitDiffPanel({
                           onMouseEnter={(e) => { if (!trackingFile) e.currentTarget.style.color = 'var(--color-success)'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
                         >{trackingFile === filePath ? '…' : '+'}</button>
+                        <button
+                          title={ignoringFile === filePath ? 'Ignoring…' : 'Add to .gitignore'}
+                          onClick={(e) => { e.stopPropagation(); handleIgnoreFile(filePath); }}
+                          disabled={!!ignoringFile}
+                          style={{ background: 'none', border: 'none', cursor: ignoringFile === filePath ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', lineHeight: 1, padding: '0 2px', flexShrink: 0, opacity: ignoringFile === filePath ? 0.4 : 1, display: 'inline-flex', alignItems: 'center' }}
+                          onMouseEnter={(e) => { if (!ignoringFile) e.currentTarget.style.color = 'var(--color-warning)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                        >{ignoringFile === filePath ? '…' : <EyeOff size={11} strokeWidth={1.75} />}</button>
                       </button>
                     );
                   })}
@@ -949,7 +1167,7 @@ export function GitDiffPanel({
                 <button onClick={onRefresh} style={{ padding: '6px 14px', fontSize: '12px', border: '1px solid var(--color-border-subtle)', borderRadius: '6px', background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer' }}>Retry</button>
               </div>
             )}
-            {!error && isEmpty && !isLoading && (
+            {!error && isEmpty && (diff !== null || !isLoading) && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-muted)', fontSize: '14px' }}>No changes</div>
             )}
             {!error && isEmpty && isLoading && diff === null && (
@@ -1023,10 +1241,12 @@ interface UntrackedFileRowProps {
   theme: 'dark' | 'light';
   onTrack: () => void;
   isTracking?: boolean;
+  onIgnore: () => void;
+  isIgnoring?: boolean;
   commitModeToggle?: { isSelected: boolean; onToggle: () => void };
 }
 
-function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, commitModeToggle }: UntrackedFileRowProps) {
+function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, onIgnore, isIgnoring, commitModeToggle }: UntrackedFileRowProps) {
   const shortName = filePath.split('/').pop() ?? filePath;
   const [expanded, setExpanded] = useState(false);
   // null = not fetched yet, 'error' = failed/binary, string = content
@@ -1082,6 +1302,14 @@ function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, co
           onMouseEnter={(e) => { if (!isTracking) e.currentTarget.style.color = 'var(--color-success)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
         >{isTracking ? '…' : '+'}</button>
+        <button
+          title={isIgnoring ? 'Ignoring…' : 'Add to .gitignore'}
+          onClick={e => { e.stopPropagation(); onIgnore(); }}
+          disabled={isIgnoring}
+          style={{ background: 'none', border: 'none', cursor: isIgnoring ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', lineHeight: 1, padding: '0 2px', flexShrink: 0, opacity: isIgnoring ? 0.4 : 1, display: 'inline-flex', alignItems: 'center' }}
+          onMouseEnter={(e) => { if (!isIgnoring) e.currentTarget.style.color = 'var(--color-warning)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+        >{isIgnoring ? '…' : <EyeOff size={11} strokeWidth={1.75} />}</button>
       </div>
       {expanded && (
         <div style={{ overflow: 'auto', maxHeight: '300px' }}>

@@ -1,4 +1,4 @@
-import type { SessionInfo, CreateSessionRequest, PathCompletionResponse, DirectoryChildrenResponse, FileContentResponse, FileSearchResponse, GitDiffResponse, NgrokStatus, NgrokStartResponse, AppConfig, AgentDetectionResponse, AuthStatus, AuthLoginResponse, UpdateStatus, UpdateApplyResponse, PatchSelectionRequest, PatchOperationResponse, CommitRequest, CommitResponse, GitLogResponse, WriteFileRequest, WriteFileResponse } from '@remote-orchestrator/shared';
+import type { SessionInfo, CreateSessionRequest, PathCompletionResponse, DirectoryChildrenResponse, FileContentResponse, FileSearchResponse, GitDiffResponse, NgrokStatus, NgrokStartResponse, AppConfig, AgentDetectionResponse, AuthStatus, AuthLoginResponse, UpdateStatus, UpdateApplyResponse, PatchSelectionRequest, PatchOperationResponse, CommitRequest, CommitResponse, GitLogResponse, WriteFileRequest, WriteFileResponse, GitBranchesResponse } from '@remote-orchestrator/shared';
 
 const API_BASE = '/api';
 const TOKEN_KEY = 'orchestrator_auth_token';
@@ -166,6 +166,13 @@ export const api = {
     return res.json();
   },
 
+  gitPull: async (sessionId: string): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-pull`, {
+      method: 'POST',
+    });
+    return res.json();
+  },
+
   gitUnstage: async (sessionId: string, filePath: string): Promise<PatchOperationResponse> => {
     const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-unstage`, {
       method: 'POST',
@@ -175,8 +182,40 @@ export const api = {
     return res.json();
   },
 
+  gitIgnore: async (sessionId: string, filePath: string): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-ignore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filePath }),
+    });
+    return res.json();
+  },
+
   getGitLog: async (sessionId: string): Promise<GitLogResponse> => {
     const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-log`);
+    return res.json();
+  },
+
+  getGitBranches: async (sessionId: string): Promise<GitBranchesResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-branches`);
+    return res.json();
+  },
+
+  gitCheckout: async (sessionId: string, branch: string): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch }),
+    });
+    return res.json();
+  },
+
+  gitCreateBranch: async (sessionId: string, name: string, from?: string): Promise<PatchOperationResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-create-branch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, from }),
+    });
     return res.json();
   },
 

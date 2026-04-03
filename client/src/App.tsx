@@ -121,6 +121,7 @@ function AppInner() {
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const [explorerState, setExplorerState] = useState<{ selectedFilePath: string | null; searchQuery: string }>({ selectedFilePath: null, searchQuery: '' });
   const [diffStates, setDiffStates] = useState<Map<string, DiffState>>(new Map());
+  const [explorerStates, setExplorerStates] = useState<Map<string, DiffState>>(new Map());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showNgrokModal, setShowNgrokModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -162,6 +163,20 @@ function AppInner() {
     });
   }, []);
 
+  const getExplorerState = useCallback(
+    (sessionId: string): DiffState => explorerStates.get(sessionId) || { isOpen: false, isFullscreen: false },
+    [explorerStates],
+  );
+
+  const updateExplorerState = useCallback((sessionId: string, update: Partial<DiffState>) => {
+    setExplorerStates((prev) => {
+      const next = new Map(prev);
+      const current = next.get(sessionId) || { isOpen: false, isFullscreen: false };
+      next.set(sessionId, { ...current, ...update });
+      return next;
+    });
+  }, []);
+
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
       document.exitFullscreen();
@@ -171,7 +186,7 @@ function AppInner() {
     triggerRefit();
   }, [triggerRefit]);
 
-  // Escape key priority: diff fullscreen → diff close → exit focus
+  // Escape key priority: diff fullscreen → diff close → explorer fullscreen → explorer close → exit focus
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -188,12 +203,23 @@ function AppInner() {
           triggerRefit();
           return;
         }
+        const es = getExplorerState(focusedSessionId);
+        if (es.isOpen && es.isFullscreen) {
+          updateExplorerState(focusedSessionId, { isFullscreen: false });
+          triggerRefit();
+          return;
+        }
+        if (es.isOpen) {
+          updateExplorerState(focusedSessionId, { isOpen: false, isFullscreen: false });
+          triggerRefit();
+          return;
+        }
         setFocusedSessionId(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusedSessionId, getDiffState, setDiffState, triggerRefit]);
+  }, [focusedSessionId, getDiffState, setDiffState, getExplorerState, updateExplorerState, triggerRefit]);
 
   const handleNewSession = useCallback(async () => {
     const path = await api.pickFolder();
@@ -261,11 +287,13 @@ function AppInner() {
         if (focusedSessionId !== sessionId) {
           setFocusedSessionId(sessionId);
         }
+        // Mutual exclusivity: close explorer when opening diff
+        updateExplorerState(sessionId, { isOpen: false, isFullscreen: false });
         setDiffState(sessionId, { isOpen: true, isFullscreen: false });
       }
       triggerRefit();
     },
-    [focusedSessionId, getDiffState, setDiffState, triggerRefit],
+    [focusedSessionId, getDiffState, setDiffState, updateExplorerState, triggerRefit],
   );
 
   const handleToggleDiffFullscreen = useCallback(
@@ -285,8 +313,38 @@ function AppInner() {
     [setDiffState, triggerRefit],
   );
 
+  const handleToggleExplorer = useCallback(
+    (sessionId: string) => {
+      // On mobile, navigate to the explorer tab
+      if (window.innerWidth < 768) {
+        setFocusedSessionId(sessionId);
+        setActiveTab('explorer');
+        return;
+      }
+      const es = getExplorerState(sessionId);
+      if (es.isOpen) {
+        updateExplorerState(sessionId, { isOpen: false, isFullscreen: false });
+      } else {
+        if (focusedSessionId !== sessionId) {
+          setFocusedSessionId(sessionId);
+        }
+        // Mutual exclusivity: close diff when opening explorer
+        setDiffState(sessionId, { isOpen: false, isFullscreen: false });
+        updateExplorerState(sessionId, { isOpen: true, isFullscreen: false });
+      }
+      triggerRefit();
+    },
+    [focusedSessionId, getExplorerState, updateExplorerState, setDiffState, triggerRefit],
+  );
+
   const orderedSessions = getOrderedSessions(sessions);
   const isStyleguide = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('styleguide');
+
+  const waitingCount = sessions.filter(s => s.status === 'waiting').length;
+
+  useEffect(() => {
+    document.title = waitingCount > 0 ? `(${waitingCount}) Argus` : 'Argus';
+  }, [waitingCount]);
 
   const ngrokBorderColor = ngrok.status?.tunnelStatus === 'connected'
     ? 'var(--color-success)'
@@ -473,6 +531,7 @@ function AppInner() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         sessionCount={sessions.length}
+         waitingCount={waitingCount}
       />
 
       <div id="main-content" style={{ display: 'contents' }}>
@@ -495,6 +554,8 @@ function AppInner() {
               onToggleDiff={handleToggleDiff}
               onToggleDiffFullscreen={handleToggleDiffFullscreen}
               onCloseDiff={handleCloseDiff}
+              getExplorerState={getExplorerState}
+              onToggleExplorer={handleToggleExplorer}
             />
           </div>
         </ErrorBoundary>

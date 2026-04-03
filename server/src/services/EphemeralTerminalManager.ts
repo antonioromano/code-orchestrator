@@ -37,8 +37,15 @@ export class EphemeralTerminalManager {
 
     ptyProcess.onData(onData);
     ptyProcess.onExit(({ exitCode }) => {
-      this.terminals.delete(id);
-      onExit(exitCode);
+      // Guard: only delete/notify if this pty is still the active one for this id.
+      // Without this check, a stale onExit from a killed pty would delete the
+      // newer pty that replaced it (race condition with double-spawn from React
+      // Strict Mode).
+      const current = this.terminals.get(id);
+      if (current && current.pty === ptyProcess) {
+        this.terminals.delete(id);
+        onExit(exitCode);
+      }
     });
 
     this.terminals.set(id, { pty: ptyProcess, socketId });

@@ -86,6 +86,8 @@ interface ExplorerPanelProps {
   initialSearchQuery?: string;
   onExplorerStateChange?: (state: { selectedFilePath: string | null; searchQuery: string }) => void;
   socket?: TypedSocket;
+  /** When true, hides SessionSidebar and uses 100% height (for Dashboard split view). */
+  embedded?: boolean;
 }
 
 function FileIcon({ ext }: { ext: string }) {
@@ -222,7 +224,7 @@ function SearchResultsList({ results, isSearching, selectedFilePath, rootPath, o
   );
 }
 
-export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSessionId, initialFilePath, initialSearchQuery, onExplorerStateChange, socket }: ExplorerPanelProps) {
+export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSessionId, initialFilePath, initialSearchQuery, onExplorerStateChange, socket, embedded }: ExplorerPanelProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [treeKey, setTreeKey] = useState(0);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(initialFilePath ?? null);
@@ -289,13 +291,18 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
       setSelectedSessionId(null);
       return;
     }
+    // When embedded, always track the focused session from the Dashboard sidebar
+    if (embedded && focusedSessionId && sessions.find(s => s.id === focusedSessionId)) {
+      setSelectedSessionId(focusedSessionId);
+      return;
+    }
     if (!selectedSessionId || !sessions.find(s => s.id === selectedSessionId)) {
       const initialId = (focusedSessionId && sessions.find(s => s.id === focusedSessionId))
         ? focusedSessionId
         : sessions[0].id;
       setSelectedSessionId(initialId);
     }
-  }, [sessions, selectedSessionId, focusedSessionId]);
+  }, [sessions, selectedSessionId, focusedSessionId, embedded]);
 
   // Fetch file content on mount if we have an initial file path (restored across tab switches)
   useEffect(() => {
@@ -524,7 +531,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
   if (sessions.length === 0) {
     return (
       <div style={{
-        height: `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
+        height: embedded ? '100%' : `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -948,7 +955,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
     <div
       ref={containerRef}
       style={{
-        height: `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
+        height: embedded ? '100%' : `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
         display: 'flex',
         flexDirection: isNarrow ? 'column' : 'row',
         overflow: 'hidden',
@@ -968,30 +975,32 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
             flexShrink: 0,
             minHeight: '36px',
           }}>
-            <select
-              className="diff-session-select"
-              value={selectedSessionId ?? ''}
-              onChange={e => handleSessionSelect(e.target.value)}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                fontSize: '11px',
-                fontFamily: 'var(--font-mono)',
-                color: 'var(--color-text-secondary)',
-                background: 'var(--color-bg-input)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                padding: '1px 4px',
-                cursor: 'pointer',
-                outline: 'none',
-              }}
-            >
-              {sessions.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.hasGitChanges ? '⚠ ' : ''}{s.name} — {s.folderPath.split('/').slice(-2).join('/')}
-                </option>
-              ))}
-            </select>
+            {!embedded && (
+              <select
+                className="diff-session-select"
+                value={selectedSessionId ?? ''}
+                onChange={e => handleSessionSelect(e.target.value)}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: '11px',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text-secondary)',
+                  background: 'var(--color-bg-input)',
+                  border: '1px solid var(--color-border-subtle)',
+                  borderRadius: '4px',
+                  padding: '1px 4px',
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+              >
+                {sessions.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.hasGitChanges ? '⚠ ' : ''}{s.name} — {s.folderPath.split('/').slice(-2).join('/')}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               onClick={() => setTreeKey(k => k + 1)}
               title="Refresh tree"
@@ -1095,14 +1104,18 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
       ) : (
         /* Wide layout: session sidebar | file tree + search | file preview */
         <>
-          {/* Left: Session sidebar (resizable) */}
-          <SessionSidebar
-            sessions={sessions}
-            activeSessionId={selectedSessionId}
-            onSelectSession={handleSessionSelect}
-            width={sidebarWidth}
-          />
-          <ResizeDivider isDragging={isSidebarDragging} onMouseDown={handleSidebarMouseDown} />
+          {/* Left: Session sidebar (resizable) — hidden when embedded in Dashboard split view */}
+          {!embedded && (
+            <>
+              <SessionSidebar
+                sessions={sessions}
+                activeSessionId={selectedSessionId}
+                onSelectSession={handleSessionSelect}
+                width={sidebarWidth}
+              />
+              <ResizeDivider isDragging={isSidebarDragging} onMouseDown={handleSidebarMouseDown} />
+            </>
+          )}
 
           {/* Middle: File tree with search (resizable) */}
           <div ref={treePanelRef} style={{

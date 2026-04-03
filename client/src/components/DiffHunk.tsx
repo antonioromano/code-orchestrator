@@ -19,6 +19,7 @@ interface DiffHunkProps {
   theme: 'dark' | 'light';
   searchQuery?: string;
   commitMode?: CommitModeHunkProps;
+  onRevertHunk?: () => void;
 }
 
 function highlightText(text: string, query: string): ReactNode {
@@ -88,9 +89,10 @@ function triStateToChecked(state: TriState): boolean | 'indeterminate' {
   return false;
 }
 
-export function DiffHunk({ chunk, theme, searchQuery, commitMode }: DiffHunkProps) {
+export function DiffHunk({ chunk, theme, searchQuery, commitMode, onRevertHunk }: DiffHunkProps) {
   const c = COLORS[theme];
   const showCommit = !!commitMode;
+  const showRevert = showCommit || !!onRevertHunk;
 
   // Compute hunk-level tri-state
   const hunkState = showCommit
@@ -104,47 +106,47 @@ export function DiffHunk({ chunk, theme, searchQuery, commitMode }: DiffHunkProp
         style={{
           display: 'flex',
           alignItems: 'center',
-          padding: showCommit ? '4px 4px 4px 8px' : '4px 12px',
+          padding: showRevert ? '4px 4px 4px 8px' : '4px 12px',
           background: c.hunkBg,
           color: c.hunkText,
           fontSize: '12px',
           fontFamily: 'var(--font-mono)',
-          gap: showCommit ? '6px' : 0,
+          gap: showRevert ? '6px' : 0,
         }}
       >
         {showCommit && (
-          <>
-            <TriStateCheckbox
-              checked={triStateToChecked(hunkState)}
-              onChange={commitMode!.onToggleChunk}
-              label={`Toggle hunk selection`}
-            />
-            <button
-              onClick={(e) => { e.stopPropagation(); commitMode!.onRevertChunk(); }}
-              title="Revert this hunk"
-              aria-label="Revert this hunk"
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: '4px',
-                minWidth: '28px',
-                minHeight: '28px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: c.hunkText,
-                opacity: 0.55,
-                flexShrink: 0,
-                transition: 'opacity 0.15s, background 0.15s',
-                borderRadius: '4px',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.15)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.background = 'none'; }}
-            >
-              <Undo2 size={11} strokeWidth={2} />
-            </button>
-          </>
+          <TriStateCheckbox
+            checked={triStateToChecked(hunkState)}
+            onChange={commitMode!.onToggleChunk}
+            label={`Toggle hunk selection`}
+          />
+        )}
+        {showRevert && (
+          <button
+            onClick={(e) => { e.stopPropagation(); showCommit ? commitMode!.onRevertChunk() : onRevertHunk!(); }}
+            title="Revert this hunk"
+            aria-label="Revert this hunk"
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '4px',
+              minWidth: '28px',
+              minHeight: '28px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--color-text-secondary)',
+              opacity: 0.85,
+              flexShrink: 0,
+              transition: 'opacity 0.15s, background 0.15s',
+              borderRadius: '4px',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.15)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.background = 'none'; }}
+          >
+            <Undo2 size={11} strokeWidth={2} />
+          </button>
         )}
         <span style={{ flex: 1 }}>{chunk.content}</span>
       </div>

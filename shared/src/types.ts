@@ -171,6 +171,21 @@ export interface GitLogResponse {
   isFirstCommit: boolean;
 }
 
+export interface GitBranchesResponse {
+  branches: string[];
+  currentBranch: string;
+  behindCount?: number;
+}
+
+export interface GitCheckoutRequest {
+  branch: string;
+}
+
+export interface GitCreateBranchRequest {
+  name: string;
+  from?: string;
+}
+
 export interface DirectoryEntry {
   name: string;
   path: string;

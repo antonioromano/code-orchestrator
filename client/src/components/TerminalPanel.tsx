@@ -4,7 +4,7 @@ import type { Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Maximize2, Minimize2, Minus, GitCompare, X, Move, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Maximize2, Minimize2, Minus, GitCompare, FolderOpen, X, Move, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useTerminal } from '../hooks/useTerminal.js';
 import { StatusDot } from './primitives/index.js';
 import { Badge } from './primitives/index.js';
@@ -24,6 +24,8 @@ interface TerminalPanelProps {
   onCollapse?: (id: string) => void;
   onToggleDiff?: (id: string) => void;
   isDiffOpen?: boolean;
+  onToggleExplorer?: (id: string) => void;
+  isExplorerOpen?: boolean;
 }
 
 const QUICK_ACTIONS = [
@@ -42,7 +44,7 @@ const QUICK_ACTIONS = [
   { label: 'Tab', data: '\t', title: 'Tab' },
 ];
 
-export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onFocus, onUnfocus, onCollapse, onToggleDiff, isDiffOpen }: TerminalPanelProps) {
+export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onFocus, onUnfocus, onCollapse, onToggleDiff, isDiffOpen, onToggleExplorer, isExplorerOpen }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   useTerminal(containerRef, { sessionId: session.id, socket, theme });
 
@@ -201,6 +203,24 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
                 onMouseLeave={(e) => { e.currentTarget.style.background = isDiffOpen ? 'var(--color-accent-subtle)' : 'transparent'; }}
               >
                 <GitCompare size={14} strokeWidth={1.75} />
+              </button>
+            </Tooltip>
+          )}
+
+          {onToggleExplorer && (
+            <Tooltip content="Toggle explorer view" position="top">
+              <button
+                onClick={() => onToggleExplorer(session.id)}
+                style={{
+                  ...iconBtnStyle,
+                  color: isExplorerOpen ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                  background: isExplorerOpen ? 'var(--color-accent-subtle)' : 'transparent',
+                }}
+                aria-label="Toggle explorer view"
+                onMouseEnter={(e) => { if (!isExplorerOpen) e.currentTarget.style.background = 'var(--color-bg-surface)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = isExplorerOpen ? 'var(--color-accent-subtle)' : 'transparent'; }}
+              >
+                <FolderOpen size={14} strokeWidth={1.75} />
               </button>
             </Tooltip>
           )}

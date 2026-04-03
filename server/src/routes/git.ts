@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { SessionManager } from '../services/SessionManager.js';
 import type { GitService } from '../services/GitService.js';
-import type { PatchSelectionRequest, CommitRequest } from '@remote-orchestrator/shared';
+import type { PatchSelectionRequest, CommitRequest, GitCheckoutRequest, GitCreateBranchRequest } from '@remote-orchestrator/shared';
 
 export function createGitRoutes(manager: SessionManager, gitService: GitService): Router {
   const router = Router();
@@ -136,6 +136,78 @@ export function createGitRoutes(manager: SessionManager, gitService: GitService)
       return;
     }
     const result = await gitService.push(session.folderPath);
+    res.status(result.success ? 200 : 400).json(result);
+  });
+
+  router.post('/sessions/:id/git-pull', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+    const result = await gitService.pull(session.folderPath);
+    res.status(result.success ? 200 : 400).json(result);
+  });
+
+  router.post('/sessions/:id/git-ignore', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const { filePath } = req.body as { filePath?: string };
+    if (!filePath) {
+      res.status(400).json({ success: false, error: 'filePath required' });
+      return;
+    }
+
+    const result = await gitService.addToGitignore(session.folderPath, filePath);
+    res.status(result.success ? 200 : 500).json(result);
+  });
+
+  router.get('/sessions/:id/git-branches', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const result = await gitService.getBranches(session.folderPath);
+    res.json(result);
+  });
+
+  router.post('/sessions/:id/git-checkout', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const { branch } = req.body as GitCheckoutRequest;
+    if (!branch?.trim()) {
+      res.status(400).json({ success: false, error: 'branch required' });
+      return;
+    }
+
+    const result = await gitService.checkoutBranch(session.folderPath, branch);
+    res.status(result.success ? 200 : 400).json(result);
+  });
+
+  router.post('/sessions/:id/git-create-branch', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const { name, from } = req.body as GitCreateBranchRequest;
+    if (!name?.trim()) {
+      res.status(400).json({ success: false, error: 'branch name required' });
+      return;
+    }
+
+    const result = await gitService.createBranch(session.folderPath, name, from);
     res.status(result.success ? 200 : 400).json(result);
   });
 

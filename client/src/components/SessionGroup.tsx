@@ -22,6 +22,7 @@ interface SessionGroupProps {
   onCloneSession: (folderPath: string, agentType?: string) => void;
   onFocusSession?: (id: string) => void;
   onToggleDiff?: (id: string) => void;
+  onToggleExplorer?: (id: string) => void;
   onCollapse?: (id: string) => void;
   focusedSessionId?: string | null;
 }
@@ -36,6 +37,7 @@ export function SessionGroup({
   onCloneSession,
   onFocusSession,
   onToggleDiff,
+  onToggleExplorer,
   onCollapse,
   focusedSessionId,
 }: SessionGroupProps) {
@@ -178,6 +180,7 @@ export function SessionGroup({
                 onFocus={onFocusSession}
                 onCollapse={onCollapse}
                 onToggleDiff={onToggleDiff}
+                onToggleExplorer={onToggleExplorer}
               />
             </ErrorBoundary>
           ))}
