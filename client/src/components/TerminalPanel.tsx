@@ -325,6 +325,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
               key={action.label}
               className="mobile-quickkey-btn"
               title={action.title}
+              aria-label={action.title}
               onClick={() => socket.emit('session:input', { sessionId: session.id, data: action.data })}
             >
               {action.label}
@@ -335,6 +336,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           <input
             className="mobile-terminal-text-input"
             type="text"
+            aria-label="Type command"
             placeholder="Type command..."
             value={mobileInput}
             onChange={(e) => setMobileInput(e.target.value)}

@@ -273,6 +273,7 @@ export function CreateSessionModal({ onClose, onCreate, theme, initialFolderPath
               <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                 <input
                   type="text"
+                  aria-label="Add flag"
                   value={newFlagValue}
                   onChange={(e) => setNewFlagValue(e.target.value)}
                   placeholder="--flag-name value"

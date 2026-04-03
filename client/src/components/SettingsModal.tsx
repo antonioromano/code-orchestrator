@@ -226,6 +226,7 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
             <div key={agent.id} style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
               <input
                 type="text"
+                aria-label="Agent name"
                 placeholder="Name (e.g. Aider)"
                 value={agent.name}
                 onChange={(e) => handleUpdateCustomAgent(agent.id, 'name', e.target.value)}
@@ -233,6 +234,7 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
               />
               <input
                 type="text"
+                aria-label="Agent command"
                 placeholder="Command (e.g. aider)"
                 value={agent.command}
                 onChange={(e) => handleUpdateCustomAgent(agent.id, 'command', e.target.value)}
@@ -327,6 +329,7 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                   <input
                     type="text"
+                    aria-label={`Add flag for ${agent.name}`}
                     value={newFlagValues[agent.id] || ''}
                     onChange={(e) => setNewFlagValues((prev) => ({ ...prev, [agent.id]: e.target.value }))}
                     placeholder="--flag-name value"

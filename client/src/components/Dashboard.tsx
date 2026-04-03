@@ -460,6 +460,7 @@ export function Dashboard({
           >
             <select
               className="diff-session-select"
+              aria-label="Switch session"
               value={focusedSessionId ?? ''}
               onChange={(e) => handleSwitchFocus(e.target.value)}
               style={{
