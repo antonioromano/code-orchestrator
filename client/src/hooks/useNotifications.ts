@@ -16,17 +16,13 @@ export function useNotifications({
 }: UseNotificationsOptions) {
   const activeNotifs = useRef<Map<string, Notification>>(new Map());
   const prevStatuses = useRef<Map<string, string>>(new Map());
-  // Track sessions that need a notification but haven't shown one yet (transitioned while focused)
-  const pendingNotifs = useRef<Set<string>>(new Set());
-  const sessionsRef = useRef(sessions);
   const onFocusRef = useRef(onFocusSession);
   const onSwitchRef = useRef(onSwitchToSessionsTab);
 
   useEffect(() => {
-    sessionsRef.current = sessions;
     onFocusRef.current = onFocusSession;
     onSwitchRef.current = onSwitchToSessionsTab;
-  }, [sessions, onFocusSession, onSwitchToSessionsTab]);
+  }, [onFocusSession, onSwitchToSessionsTab]);
 
   const fireNotification = (session: SessionInfo) => {
     if (activeNotifs.current.has(session.id)) return;
@@ -46,7 +42,6 @@ export function useNotifications({
     };
 
     activeNotifs.current.set(session.id, notif);
-    pendingNotifs.current.delete(session.id);
   };
 
   // Fire notifications on status transitions
@@ -62,19 +57,15 @@ export function useNotifications({
       const prev = prevStatuses.current.get(session.id);
       const curr = session.status;
 
-      // Transition TO waiting
+      // Transition TO waiting — only notify if tab is not focused
       if (curr === 'waiting' && prev !== 'waiting' && prev !== undefined) {
         if (!document.hasFocus()) {
           fireNotification(session);
-        } else {
-          // Mark as pending — will fire once when user switches away
-          pendingNotifs.current.add(session.id);
         }
       }
 
-      // Transition AWAY from waiting — clean up everything
+      // Transition AWAY from waiting — clean up
       if (curr !== 'waiting' && prev === 'waiting') {
-        pendingNotifs.current.delete(session.id);
         const existing = activeNotifs.current.get(session.id);
         if (existing) {
           existing.close();
@@ -92,27 +83,9 @@ export function useNotifications({
         notif.close();
         activeNotifs.current.delete(id);
         prevStatuses.current.delete(id);
-        pendingNotifs.current.delete(id);
       }
     }
   }, [sessions, enabled]);
-
-  // Fire pending notifications once when user switches away
-  useEffect(() => {
-    if (!enabled || !('Notification' in window) || Notification.permission !== 'granted') return;
-
-    const handleBlur = () => {
-      if (pendingNotifs.current.size === 0) return;
-      for (const session of sessionsRef.current) {
-        if (pendingNotifs.current.has(session.id) && session.status === 'waiting') {
-          fireNotification(session);
-        }
-      }
-    };
-
-    window.addEventListener('blur', handleBlur);
-    return () => window.removeEventListener('blur', handleBlur);
-  }, [enabled]);
 
   // Cleanup on unmount
   useEffect(() => {

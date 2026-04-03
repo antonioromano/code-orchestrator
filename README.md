@@ -1,8 +1,10 @@
 # Argus
 
-![Version](https://img.shields.io/badge/version-0.9.2-blue) ![Node](https://img.shields.io/badge/node-18%2B-green) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
+![Version](https://img.shields.io/badge/version-0.9.3-blue) ![Node](https://img.shields.io/badge/node-18%2B-green) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
 
 A web-based dashboard for managing multiple AI coding agent sessions simultaneously. Spawn [Claude Code](https://claude.ai/code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), or [OpenAI Codex](https://github.com/openai/codex) processes via pseudo-terminals, stream their I/O to browser-based terminals, and monitor session state in real time.
+
+![Argus Dashboard](images/dashboard.png)
 
 ## Table of Contents
 
@@ -20,6 +22,7 @@ A web-based dashboard for managing multiple AI coding agent sessions simultaneou
   - [Remote Access](#remote-access)
   - [Password Authentication](#password-authentication)
   - [Auto-Update](#auto-update)
+  - [Notifications](#notifications)
   - [Mobile Support](#mobile-support)
   - [Theme](#theme)
   - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -84,6 +87,7 @@ Removes the `swarm` symlink. Optionally removes `node_modules/`. Project files a
 - **Status badges** — Each session shows its real-time state: `waiting` (prompt visible), `running` (agent processing), `idle` (quiet, no prompt), or `exited`
 - **Collapsible sessions** — Minimize any session to a chip strip at the top of the dashboard; collapsed sessions stay connected via Socket.io and continue showing live status, then restore with one click
 - **Agent CLI flags** — Configure per-agent command-line flags (e.g. `--model`, `--verbose`) in Settings with sticky defaults; toggle individual flags on or off per session at creation time
+- **Git dirty indicator** — Orange warning icon next to session names when uncommitted changes exist; visible in terminal cards, focus mode, sidebar, collapsed chips, and dropdowns
 
 ### Layout & Organization
 
@@ -95,6 +99,7 @@ Removes the `swarm` symlink. Optionally removes `node_modules/`. Project files a
 
 - **Full-screen session** — Click into any session to expand it, with the terminal taking up most of the view
 - **Collapsed session strip** — Other sessions appear as a horizontal mini bar with status indicators for quick switching
+- **Explorer panel** — Toggle a file explorer alongside the terminal in focus mode; mutually exclusive with the diff panel
 - **Exit** — Press **Escape** or click the back button to return to the grid
 
 ### Terminal
@@ -112,6 +117,9 @@ Removes the `swarm` symlink. Optionally removes `node_modules/`. Project files a
 - **Inline editing** — Edit files directly in the browser; conflict detection compares `mtime` to prevent overwriting changes made by the agent after you opened the file
 - **Markdown preview** — Markdown files render with full formatting
 - **Copy to clipboard** — One-click copy of the full file contents
+- **Resizable panels** — Drag dividers between sidebar, file tree, and preview columns; sizes persist to localStorage
+- **Ephemeral terminal** — Open a real shell in the session's working directory from the Explorer view without creating a new session
+- **State persistence** — Selected session, file, and search query persist across tab switches
 
 ### Git Diff Viewer
 
@@ -157,6 +165,14 @@ Removes the `swarm` symlink. Optionally removes `node_modules/`. Project files a
 - **One-click update** — When a new version is available, a modal shows the version diff and changelog; clicking "Update Now" runs `git pull` + `npm install` and restarts the server
 - **Safety guard** — Refuses to update if the working tree has uncommitted local changes
 
+### Notifications
+
+- **Browser notifications** — Native desktop notifications fire when a session transitions to `waiting` while the tab is not in focus; click to focus the browser and jump to that session
+- **Tab title badge** — Document title shows `(N) Argus` with the count of sessions awaiting input
+- **Waiting count badge** — Orange badge on the Sessions navigation tab shows how many sessions need attention
+- **Configurable** — Toggle on/off in Settings; browser permission requested on first enable; gracefully hidden on unsupported browsers
+- **Auto-dismiss** — Notifications close automatically when the session leaves `waiting` status or is deleted
+
 ### Mobile Support
 
 - **Bottom navigation** — On narrow screens, a bottom nav bar provides access to Sessions, Git Diff, and Explorer tabs, plus a floating action button for new sessions
@@ -175,7 +191,7 @@ Removes the `swarm` symlink. Optionally removes `node_modules/`. Project files a
 
 | Key | Action |
 |-----|--------|
-| `Escape` | Exit diff fullscreen → close diff panel → exit focus mode (priority order) |
+| `Escape` | Exit diff fullscreen → close diff panel → exit explorer fullscreen → close explorer panel → exit focus mode (priority order) |
 | `Ctrl/Cmd+Enter` | Submit commit message (when commit bar is focused) |
 
 ## How It Works
