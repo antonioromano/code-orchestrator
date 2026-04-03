@@ -27,6 +27,17 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
   const [detecting, setDetecting] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const browserSupportsNotifications = 'Notification' in window;
+  const permissionAlreadyGranted = browserSupportsNotifications && Notification.permission === 'granted';
+  const [notificationsEnabled, setNotificationsEnabled] = useState(
+    (config.notificationsEnabled ?? false) && permissionAlreadyGranted,
+  );
+  const [permissionDenied, setPermissionDenied] = useState(
+    browserSupportsNotifications && Notification.permission === 'denied',
+  );
+  const [needsPermission, setNeedsPermission] = useState(
+    (config.notificationsEnabled ?? false) && browserSupportsNotifications && !permissionAlreadyGranted && Notification.permission !== 'denied',
+  );
 
   useEffect(() => {
     api.detectAgents()
@@ -73,6 +84,29 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
     }));
   };
 
+  const requestNotificationPermission = async () => {
+    const result = await Notification.requestPermission();
+    if (result === 'granted') {
+      setNotificationsEnabled(true);
+      setPermissionDenied(false);
+      setNeedsPermission(false);
+    } else {
+      setNotificationsEnabled(false);
+      setPermissionDenied(result === 'denied');
+      setNeedsPermission(false);
+    }
+  };
+
+  const handleToggleNotifications = async () => {
+    if (!notificationsEnabled) {
+      await requestNotificationPermission();
+    } else {
+      setNotificationsEnabled(false);
+      setPermissionDenied(false);
+      setNeedsPermission(false);
+    }
+  };
+
   const handleSave = async () => {
     const invalid = customAgents.find((a) => !a.name.trim() || !a.command.trim());
     if (invalid) {
@@ -82,7 +116,7 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ defaultAgent, customAgents, agentFlags });
+      await onSave({ defaultAgent, customAgents, agentFlags, notificationsEnabled });
       onClose();
     } catch {
       setError('Failed to save settings.');
@@ -357,6 +391,79 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
           })}
         </div>
       </section>
+
+      {/* Session Notifications */}
+      {'Notification' in window && (
+        <section style={{ marginBottom: 'var(--space-6)' }}>
+          <label style={sectionLabel}>Session Notifications</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <button
+              role="switch"
+              aria-checked={notificationsEnabled}
+              onClick={handleToggleNotifications}
+              style={{
+                width: 44,
+                height: 24,
+                borderRadius: 12,
+                border: 'none',
+                background: notificationsEnabled ? 'var(--color-accent)' : 'var(--color-border-subtle)',
+                position: 'relative',
+                cursor: 'pointer',
+                transition: 'background var(--transition-fast)',
+                flexShrink: 0,
+              }}
+            >
+              <span style={{
+                position: 'absolute',
+                top: 2,
+                left: notificationsEnabled ? 22 : 2,
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                background: '#fff',
+                transition: 'left var(--transition-fast)',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </button>
+            <span style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-secondary)' }}>
+              Notify when a session is waiting for input
+            </span>
+          </div>
+          {needsPermission && (
+            <div style={{ marginTop: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warning, #f0a500)' }}>
+                Browser permission required.
+              </span>
+              <button
+                onClick={requestNotificationPermission}
+                style={{
+                  fontSize: 'var(--text-sm)',
+                  padding: '2px 10px',
+                  border: '1px solid var(--color-accent)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'transparent',
+                  color: 'var(--color-accent)',
+                  cursor: 'pointer',
+                  transition: 'background var(--transition-fast)',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-accent-subtle)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                Grant Permission
+              </button>
+            </div>
+          )}
+          {permissionDenied && (
+            <div style={{
+              marginTop: 'var(--space-2)',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--color-warning, #f0a500)',
+            }}>
+              Notification permission was denied. Enable it in your browser settings.
+            </div>
+          )}
+        </section>
+      )}
 
       {error && (
         <div

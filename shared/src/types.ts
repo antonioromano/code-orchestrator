@@ -22,6 +22,7 @@ export interface AppConfig {
   defaultAgent: AgentType;
   customAgents: AgentDefinition[];
   agentFlags: Record<string, AgentFlag[]>;  // keyed by agent ID
+  notificationsEnabled: boolean;
 }
 
 export interface AgentStatus {

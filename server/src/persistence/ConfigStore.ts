@@ -6,6 +6,7 @@ const DEFAULT_CONFIG: AppConfig = {
   defaultAgent: 'claude',
   customAgents: [],
   agentFlags: {},
+  notificationsEnabled: false,
 };
 
 export class ConfigStore {

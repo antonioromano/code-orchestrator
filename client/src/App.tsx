@@ -8,6 +8,7 @@ import { useNgrok } from './hooks/useNgrok.js';
 import { useUpdate } from './hooks/useUpdate.js';
 import { useConfig } from './hooks/useConfig.js';
 import { useGitDiff } from './hooks/useGitDiff.js';
+import { useNotifications } from './hooks/useNotifications.js';
 import type { SessionInfo } from '@remote-orchestrator/shared';
 import { Dashboard } from './components/Dashboard.js';
 import { CreateSessionModal } from './components/CreateSessionModal.js';
@@ -271,6 +272,17 @@ function AppInner() {
   const handleUnfocus = useCallback(() => {
     setFocusedSessionId(null);
   }, []);
+
+  const handleSwitchToSessionsTab = useCallback(() => {
+    setActiveTab('sessions');
+  }, []);
+
+  useNotifications({
+    sessions,
+    enabled: config?.notificationsEnabled ?? false,
+    onFocusSession: handleFocus,
+    onSwitchToSessionsTab: handleSwitchToSessionsTab,
+  });
 
   const handleToggleDiff = useCallback(
     (sessionId: string) => {
