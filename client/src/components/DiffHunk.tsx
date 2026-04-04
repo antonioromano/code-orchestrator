@@ -20,6 +20,7 @@ interface DiffHunkProps {
   searchQuery?: string;
   commitMode?: CommitModeHunkProps;
   onRevertHunk?: () => void;
+  wordWrap?: boolean;
 }
 
 function highlightText(text: string, query: string): ReactNode {
@@ -89,7 +90,7 @@ function triStateToChecked(state: TriState): boolean | 'indeterminate' {
   return false;
 }
 
-export function DiffHunk({ chunk, theme, searchQuery, commitMode, onRevertHunk }: DiffHunkProps) {
+export function DiffHunk({ chunk, theme, searchQuery, commitMode, onRevertHunk, wordWrap }: DiffHunkProps) {
   const c = COLORS[theme];
   const showCommit = !!commitMode;
   const showRevert = showCommit || !!onRevertHunk;
@@ -251,9 +252,12 @@ export function DiffHunk({ chunk, theme, searchQuery, commitMode, onRevertHunk }
               <span
                 style={{
                   flex: 1,
+                  minWidth: 0,
                   color: textColor,
                   padding: '0 8px',
-                  whiteSpace: 'pre',
+                  whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                  wordBreak: wordWrap ? 'break-all' : undefined,
+                  overflowWrap: wordWrap ? 'break-word' : undefined,
                   overflow: 'hidden',
                   cursor: showCommit && isChangeLine ? undefined : 'text',
                   userSelect: showCommit ? undefined : 'text',
