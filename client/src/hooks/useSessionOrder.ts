@@ -4,7 +4,7 @@ import { api } from '../services/api.js';
 
 export function useSessionOrder() {
   const [order, setOrder] = useState<string[]>([]);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     api.getSessionOrder().then(setOrder).catch(console.error);

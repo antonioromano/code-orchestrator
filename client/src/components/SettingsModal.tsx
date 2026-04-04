@@ -9,7 +9,7 @@ import { Skeleton } from './primitives/index.js';
 interface SettingsModalProps {
   config: AppConfig;
   onClose: () => void;
-  onSave: (config: Partial<AppConfig>) => Promise<void>;
+  onSave: (config: Partial<AppConfig>) => Promise<AppConfig | void>;
   theme: 'dark' | 'light';
 }
 
