@@ -8,6 +8,16 @@ SWARM_SOURCE="$PROJECT_ROOT/bin/swarm.sh"
 echo "Uninstalling Remote Orchestrator..."
 echo ""
 
+# --- Stop swarm if running ---
+if [ -x "$PROJECT_ROOT/bin/swarm.sh" ]; then
+  "$PROJECT_ROOT/bin/swarm.sh" stop 2>/dev/null || true
+fi
+
+# --- Clean up runtime files ---
+rm -f "$PROJECT_ROOT/server/data/swarm.pid" \
+      "$PROJECT_ROOT/server/data/swarm.session" \
+      "$PROJECT_ROOT/server/data/swarm.log"
+
 # --- Remove swarm symlink ---
 REMOVED=false
 for candidate in "$HOME/.local/bin/swarm" "/usr/local/bin/swarm"; do

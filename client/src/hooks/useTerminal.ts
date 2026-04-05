@@ -172,6 +172,17 @@ export function useTerminal(
     // Join socket room
     socket.emit('session:join', sessionId);
 
+    // Re-join room on reconnect (server restart loses room membership)
+    const handleReconnect = () => {
+      socket.emit('session:join', sessionId);
+      socket.emit('session:resize', {
+        sessionId,
+        cols: terminal.cols,
+        rows: terminal.rows,
+      });
+    };
+    socket.on('connect', handleReconnect);
+
     // Socket -> Terminal
     const handleOutput = ({ sessionId: sid, data }: { sessionId: string; data: string }) => {
       if (sid === sessionId) {
@@ -225,6 +236,7 @@ export function useTerminal(
       }
       onDataDisposable.dispose();
       socket.off('session:output', handleOutput);
+      socket.off('connect', handleReconnect);
       socket.emit('session:leave', sessionId);
       terminal.dispose();
       terminalRef.current = null;

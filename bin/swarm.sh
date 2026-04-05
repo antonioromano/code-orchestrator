@@ -11,26 +11,14 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd -P)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
-# --- Check Node.js ---
-if ! command -v node &>/dev/null; then
-  echo "Error: Node.js is not installed. Please install Node.js 18+." >&2
-  exit 1
-fi
-NODE_MAJOR=$(node -v | sed 's/v//' | cut -d. -f1)
-if [ "$NODE_MAJOR" -lt 18 ]; then
-  echo "Error: Node.js 18+ is required (found $(node -v))." >&2
-  exit 1
-fi
-
-# --- Auto-install dependencies if missing ---
-if [ ! -d "$PROJECT_ROOT/node_modules" ]; then
-  echo "Dependencies not installed. Running npm install..."
-  (cd "$PROJECT_ROOT" && npm install)
-fi
+# --- Runtime file paths ---
+RUNTIME_DIR="$PROJECT_ROOT/server/data"
+PID_FILE="$RUNTIME_DIR/swarm.pid"
+SESSION_FILE="$RUNTIME_DIR/swarm.session"
+LOG_FILE="$RUNTIME_DIR/swarm.log"
 
 # --- Cross-platform helpers ---
 
-# Open a URL in the default browser
 open_url() {
   case "$(uname -s)" in
     Darwin) open "$1" 2>/dev/null || true ;;
@@ -39,7 +27,6 @@ open_url() {
   esac
 }
 
-# Check if a TCP port is listening
 check_port() {
   if command -v lsof &>/dev/null; then
     lsof -i :"$1" -sTCP:LISTEN &>/dev/null
@@ -50,7 +37,6 @@ check_port() {
   fi
 }
 
-# Kill processes listening on a TCP port
 kill_port() {
   if command -v lsof &>/dev/null; then
     lsof -i :"$1" -sTCP:LISTEN -t 2>/dev/null | xargs kill 2>/dev/null || true
@@ -59,7 +45,14 @@ kill_port() {
   fi
 }
 
-# Health check with curl or wget fallback
+force_kill_port() {
+  if command -v lsof &>/dev/null; then
+    lsof -i :"$1" -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+  elif command -v fuser &>/dev/null; then
+    fuser -k "$1/tcp" 2>/dev/null || true
+  fi
+}
+
 health_check() {
   if command -v curl &>/dev/null; then
     curl -s --max-time 2 http://localhost:5173/api/health >/dev/null 2>&1
@@ -70,38 +63,66 @@ health_check() {
   fi
 }
 
-# --- Check if servers are already running ---
-if health_check; then
-  echo "Swarm is already running. Opening dashboard..."
-  open_url http://localhost:5173
-  exit 0
-fi
+# --- Preflight checks ---
 
-# Check for port conflicts (stale processes or other apps)
-if check_port 5400 || check_port 5173; then
-  echo "Killing stale processes on ports 5400/5173..."
-  kill_port 5400
-  kill_port 5173
-  sleep 1
-  # Force kill if still alive
-  if check_port 5400 || check_port 5173; then
-    if command -v lsof &>/dev/null; then
-      lsof -i :5400 -i :5173 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
-    elif command -v fuser &>/dev/null; then
-      fuser -k 5400/tcp 2>/dev/null || true
-      fuser -k 5173/tcp 2>/dev/null || true
-    fi
-    sleep 1
-  fi
-  if check_port 5400 || check_port 5173; then
-    echo "Error: Could not free ports 5400/5173." >&2
+preflight() {
+  # Check Node.js
+  if ! command -v node &>/dev/null; then
+    echo "Error: Node.js is not installed. Please install Node.js 18+." >&2
     exit 1
   fi
-  echo "Ports cleared."
-fi
+  NODE_MAJOR=$(node -v | sed 's/v//' | cut -d. -f1)
+  if [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "Error: Node.js 18+ is required (found $(node -v))." >&2
+    exit 1
+  fi
 
-# --- Open browser when servers are ready (background) ---
-OPENER_PID=""
+  # Auto-install dependencies if missing
+  if [ ! -d "$PROJECT_ROOT/node_modules" ]; then
+    echo "Dependencies not installed. Running npm install..."
+    (cd "$PROJECT_ROOT" && npm install)
+  fi
+
+  # Ensure runtime directory exists
+  mkdir -p "$RUNTIME_DIR"
+}
+
+# --- Clean stale ports ---
+
+clean_ports() {
+  if check_port 5400 || check_port 5173; then
+    echo "Killing stale processes on ports 5400/5173..."
+    kill_port 5400
+    kill_port 5173
+    sleep 1
+    # Force kill if still alive
+    if check_port 5400 || check_port 5173; then
+      force_kill_port 5400
+      force_kill_port 5173
+      sleep 1
+    fi
+    if check_port 5400 || check_port 5173; then
+      echo "Error: Could not free ports 5400/5173." >&2
+      exit 1
+    fi
+    echo "Ports cleared."
+  fi
+}
+
+# --- Detect backgrounding method ---
+
+detect_method() {
+  if command -v screen &>/dev/null; then
+    echo "screen"
+  elif command -v tmux &>/dev/null; then
+    echo "tmux"
+  else
+    echo "nohup"
+  fi
+}
+
+# --- Open browser when ready (background, disowned) ---
+
 open_when_ready() {
   local attempts=0
   local max_attempts=60
@@ -118,24 +139,206 @@ open_when_ready() {
   echo "Warning: Servers did not become ready within 30 seconds." >&2
   echo "Try opening http://localhost:5173 manually." >&2
 }
-open_when_ready &
-OPENER_PID=$!
 
-# --- Cleanup on exit ---
-cleanup() {
-  if [ -n "$OPENER_PID" ] && kill -0 "$OPENER_PID" 2>/dev/null; then
-    kill "$OPENER_PID" 2>/dev/null || true
+# --- Subcommands ---
+
+cmd_start() {
+  preflight
+
+  # Already running?
+  if health_check; then
+    echo "Swarm is already running. Opening dashboard..."
+    open_url http://localhost:5173
+    exit 0
+  fi
+
+  # Clean stale ports
+  clean_ports
+
+  # Detect backgrounding method
+  local method
+  method=$(detect_method)
+
+  # Truncate log file
+  : > "$LOG_FILE"
+
+  # Write session marker
+  echo "$method" > "$SESSION_FILE"
+
+  echo "Starting Swarm in background (via $method)..."
+  echo "  Server: http://localhost:5400"
+  echo "  Client: http://localhost:5173"
+  echo ""
+
+  case "$method" in
+    screen)
+      screen -dmS swarm bash -c "cd '$PROJECT_ROOT' && npm run dev 2>&1 | tee -a '$LOG_FILE'"
+      ;;
+    tmux)
+      tmux new-session -d -s swarm "cd '$PROJECT_ROOT' && npm run dev 2>&1 | tee -a '$LOG_FILE'"
+      ;;
+    nohup)
+      nohup bash -c "cd '$PROJECT_ROOT' && npm run dev" > "$LOG_FILE" 2>&1 &
+      echo $! > "$PID_FILE"
+      disown
+      ;;
+  esac
+
+  # Wait for health check in background, then open browser (fully detached from terminal)
+  ( open_when_ready ) >> "$LOG_FILE" 2>&1 &
+  disown
+
+  echo "Use 'swarm logs'    to see output."
+  echo "Use 'swarm stop'    to shut down."
+  [ "$method" != "nohup" ] && echo "Use 'swarm attach'  to attach to the live session."
+  echo ""
+}
+
+cmd_stop() {
+  if ! health_check && [ ! -f "$SESSION_FILE" ]; then
+    echo "Swarm is not running."
+    exit 0
+  fi
+
+  echo "Stopping Swarm..."
+
+  # Method-specific kill
+  if [ -f "$SESSION_FILE" ]; then
+    local method
+    method=$(cat "$SESSION_FILE")
+    case "$method" in
+      screen)
+        screen -S swarm -X quit 2>/dev/null || true
+        ;;
+      tmux)
+        tmux kill-session -t swarm 2>/dev/null || true
+        ;;
+      nohup)
+        if [ -f "$PID_FILE" ]; then
+          local pid
+          pid=$(cat "$PID_FILE")
+          # Try killing the process group first, then the individual process
+          kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+        fi
+        ;;
+    esac
+  fi
+
+  # Safety net: kill anything still on our ports
+  sleep 1
+  kill_port 5400
+  kill_port 5173
+  sleep 1
+
+  # Force kill if still alive
+  if check_port 5400 || check_port 5173; then
+    force_kill_port 5400
+    force_kill_port 5173
+    sleep 1
+  fi
+
+  # Clean up runtime files
+  rm -f "$PID_FILE" "$SESSION_FILE"
+
+  if check_port 5400 || check_port 5173; then
+    echo "Warning: Some processes may still be running on ports 5400/5173." >&2
+  else
+    echo "Swarm stopped."
   fi
 }
-trap cleanup EXIT INT TERM
 
-# --- Start servers ---
-echo "Starting Argus..."
-echo "  Server: http://localhost:5400"
-echo "  Client: http://localhost:5173"
-echo ""
-echo "Press Ctrl+C to stop."
-echo ""
+cmd_status() {
+  if health_check; then
+    local method="unknown"
+    [ -f "$SESSION_FILE" ] && method=$(cat "$SESSION_FILE")
+    echo "Swarm is running (via $method)."
+    echo "  Dashboard: http://localhost:5173"
+  elif [ -f "$SESSION_FILE" ]; then
+    echo "Swarm appears to have crashed."
+    echo "  Run 'swarm stop' to clean up, then 'swarm start'."
+  else
+    echo "Swarm is not running."
+  fi
+}
 
-cd "$PROJECT_ROOT"
-exec npm run dev
+cmd_logs() {
+  if [ ! -f "$LOG_FILE" ]; then
+    echo "No log file found. Is Swarm running?" >&2
+    echo "  Start with: swarm start" >&2
+    exit 1
+  fi
+  echo "Tailing Swarm logs (Ctrl+C to stop tailing)..."
+  echo ""
+  tail -f "$LOG_FILE"
+}
+
+cmd_attach() {
+  if ! health_check; then
+    echo "Swarm is not running. Start it with: swarm start" >&2
+    exit 1
+  fi
+
+  if [ ! -f "$SESSION_FILE" ]; then
+    echo "No session file found. Cannot determine session type." >&2
+    echo "  Use 'swarm logs' to see output instead." >&2
+    exit 1
+  fi
+
+  local method
+  method=$(cat "$SESSION_FILE")
+  case "$method" in
+    screen)
+      echo "Attaching to screen session (detach with Ctrl+A, D)..."
+      screen -r swarm
+      ;;
+    tmux)
+      echo "Attaching to tmux session (detach with Ctrl+B, D)..."
+      tmux attach -t swarm
+      ;;
+    nohup)
+      echo "Cannot attach in nohup mode. Use 'swarm logs' instead."
+      ;;
+    *)
+      echo "Unknown session type: $method" >&2
+      echo "  Use 'swarm logs' to see output instead." >&2
+      exit 1
+      ;;
+  esac
+}
+
+cmd_help() {
+  echo "Usage: swarm <command>"
+  echo ""
+  echo "Commands:"
+  echo "  start     Start Swarm in the background"
+  echo "  stop      Stop the running Swarm service"
+  echo "  status    Show whether Swarm is running (default)"
+  echo "  logs      Tail the Swarm log output"
+  echo "  attach    Attach to the live session (screen/tmux only)"
+  echo "  help      Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  swarm             Show status"
+  echo "  swarm start       Start the service in background"
+  echo "  swarm stop        Stop the service"
+  echo ""
+}
+
+# --- Subcommand dispatch ---
+
+COMMAND="${1:-status}"
+
+case "$COMMAND" in
+  start)   cmd_start ;;
+  stop)    cmd_stop ;;
+  status)  cmd_status ;;
+  logs)    cmd_logs ;;
+  attach)  cmd_attach ;;
+  help|--help|-h)  cmd_help ;;
+  *)
+    echo "Unknown command: $COMMAND" >&2
+    echo ""
+    cmd_help
+    exit 1
+    ;;
+esac

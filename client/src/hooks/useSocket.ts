@@ -13,6 +13,30 @@ function getSocket(): TypedSocket {
     sharedSocket = io({
       transports: ['websocket', 'polling'],
       auth: token ? { token } : undefined,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 3000,
+    });
+
+    // Debug logging for socket lifecycle
+    sharedSocket.on('connect', () => {
+      console.log('[socket] connected, id:', sharedSocket!.id);
+    });
+    sharedSocket.on('disconnect', (reason) => {
+      console.log('[socket] disconnected, reason:', reason);
+    });
+    sharedSocket.on('connect_error', (err) => {
+      console.error('[socket] connect_error:', err.message);
+    });
+    sharedSocket.io.on('reconnect_attempt', (attempt) => {
+      console.log('[socket] reconnect_attempt #', attempt);
+    });
+    sharedSocket.io.on('reconnect', (attempt) => {
+      console.log('[socket] reconnected after', attempt, 'attempts');
+    });
+    sharedSocket.io.on('reconnect_failed', () => {
+      console.error('[socket] reconnect_failed — all attempts exhausted');
     });
   }
   return sharedSocket;

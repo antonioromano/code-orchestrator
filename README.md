@@ -1,6 +1,6 @@
 # Argus
 
-![Version](https://img.shields.io/badge/version-0.10.0-blue) ![Node](https://img.shields.io/badge/node-18%2B-green) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
+![Version](https://img.shields.io/badge/version-0.11.0-blue) ![Node](https://img.shields.io/badge/node-18%2B-green) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
 
 A web-based dashboard for managing multiple AI coding agent sessions simultaneously. Spawn [Claude Code](https://claude.ai/code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), or [OpenAI Codex](https://github.com/openai/codex) processes via pseudo-terminals, stream their I/O to browser-based terminals, and monitor session state in real time.
 
@@ -49,15 +49,19 @@ cd code-orchestrator
 ### Starting the dashboard
 
 ```bash
-swarm
+swarm start
 ```
 
-The `swarm` command:
-- If the dashboard is already running, opens it in your browser immediately
-- Kills any stale processes on ports 5400/5173
-- Starts the server and client concurrently
-- Waits for the health check to pass, then opens `http://localhost:5173` automatically
-- Press **Ctrl+C** to stop all services
+The service starts in the background (via `screen`, `tmux`, or `nohup` — whichever is available) and opens the dashboard in your browser when ready. Your terminal is returned immediately.
+
+```bash
+swarm              # Show service status
+swarm start        # Start in background, open browser
+swarm stop         # Stop the service
+swarm logs         # Tail live output
+swarm attach       # Attach to the live session (screen/tmux only)
+swarm help         # Show all commands
+```
 
 ### Uninstalling
 
@@ -65,7 +69,7 @@ The `swarm` command:
 ./uninstall.sh
 ```
 
-Removes the `swarm` symlink. Optionally removes `node_modules/`. Project files are left intact.
+Stops the running service, removes the `swarm` symlink, and cleans up runtime files. Optionally removes `node_modules/`. Project files are left intact.
 
 ## Prerequisites
 
