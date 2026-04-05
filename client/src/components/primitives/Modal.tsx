@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { IconButton } from './IconButton.js';
-import { useTheme } from '../../context/ThemeContext.js';
 
 const WIDTHS: Record<string, string> = {
   sm: '360px',
@@ -23,8 +22,6 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, size = 'md', children, footer, maxHeight = '80vh' }: ModalProps) {
-  const { isDark } = useTheme();
-
   // Close on Escape
   useEffect(() => {
     if (!isOpen) return;
@@ -40,11 +37,11 @@ export function Modal({ isOpen, onClose, title, size = 'md', children, footer, m
   return (
     <div
       onClick={onClose}
+      className="glass-overlay"
       style={{
         position: 'fixed',
         inset: 0,
         background: 'rgba(12,13,24,0.65)',
-        backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -56,9 +53,8 @@ export function Modal({ isOpen, onClose, title, size = 'md', children, footer, m
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
+        className="glass-panel"
         style={{
-          background: isDark ? 'rgba(30,31,42,0.92)' : 'rgba(241,243,254,0.92)',
-          backdropFilter: 'blur(20px)',
           borderRadius: 'var(--radius-xl)',
           padding: 'var(--space-6)',
           width: WIDTHS[size],
@@ -66,8 +62,6 @@ export function Modal({ isOpen, onClose, title, size = 'md', children, footer, m
           maxHeight,
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: 'var(--shadow-float)',
-          border: '1px solid var(--color-border-base)',
         }}
       >
         {/* Header */}

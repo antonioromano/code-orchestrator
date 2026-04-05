@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from './context/ThemeContext.js';
 import { Styleguide } from './components/styleguide/Styleguide.js';
 import { useSocket, useSocketStatus, reconnectSocket } from './hooks/useSocket.js';
@@ -23,7 +23,7 @@ import { NavTabs } from './components/NavTabs.js';
 import type { AppTab } from './components/NavTabs.js';
 import { MobileBottomNav } from './components/MobileBottomNav.js';
 import { api, setToken } from './services/api.js';
-import { WifiOff, Settings, Maximize2, Minimize2, Globe, ArrowUpCircle, Sun, Moon, Loader2 } from 'lucide-react';
+import { WifiOff, Settings, Maximize2, Minimize2, Globe, ArrowUpCircle, Sun, Moon, Loader2, Terminal, GitBranch, FolderOpen } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 
 interface DiffState {
@@ -144,10 +144,12 @@ function AppInner() {
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
+  const refitTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const triggerRefit = useCallback(() => {
-    for (const delay of [50, 150, 350]) {
-      setTimeout(() => window.dispatchEvent(new Event('terminal:refit')), delay);
-    }
+    if (refitTimerRef.current) clearTimeout(refitTimerRef.current);
+    refitTimerRef.current = setTimeout(() => {
+      window.dispatchEvent(new Event('terminal:refit'));
+    }, 150);
   }, []);
 
   const getDiffState = useCallback(
@@ -405,30 +407,76 @@ function AppInner() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           height: 'var(--header-height)',
           padding: '0 var(--space-4)',
           paddingTop: 'env(safe-area-inset-top, 0px)',
-          background: 'var(--color-bg-header)',
+          background: 'var(--color-bg-deepest)',
           borderBottom: 'none',
+          gap: 'var(--space-1)',
+          flexShrink: 0,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <span style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-            Argus
-          </span>
-          <span
-            style={{
-              fontSize: 'var(--text-sm)',
-              color: 'var(--color-text-muted)',
-              background: 'var(--color-bg-base)',
-              padding: '2px 8px',
-              borderRadius: 'var(--radius-pill)',
-            }}
-          >
-            {sessions.length} session{sessions.length !== 1 ? 's' : ''}
-          </span>
-        </div>
+        {/* Brand */}
+        <span style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-text-primary)', marginRight: 'var(--space-3)' }}>
+          Argus
+        </span>
+
+        {/* Inline tabs */}
+        {([
+          { id: 'sessions' as AppTab, label: 'Terminal Sessions', icon: Terminal },
+          { id: 'git-diff' as AppTab, label: 'Git Diff', icon: GitBranch },
+          { id: 'explorer' as AppTab, label: 'Explorer', icon: FolderOpen },
+        ]).map((tab) => {
+          const isActive = activeTab === tab.id;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveTab(tab.id)}
+              className={!isActive ? 'hover-bg-surface' : ''}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '0 12px',
+                height: '32px',
+                border: 'none',
+                borderBottom: isActive ? '2px solid var(--color-accent)' : '2px solid transparent',
+                background: isActive ? 'var(--color-surface-highest)' : 'transparent',
+                color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                fontSize: 'var(--text-base)',
+                fontWeight: isActive ? 600 : 400,
+                fontFamily: 'var(--font-sans)',
+                transition: 'background var(--transition-fast), color var(--transition-fast)',
+                borderRadius: 'var(--radius-sm)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Icon size={13} strokeWidth={1.75} />
+              {tab.label}
+              {tab.id === 'sessions' && waitingCount > 0 && (
+                <span style={{
+                  fontSize: 'var(--text-xs)',
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  color: 'var(--color-status-waiting)',
+                  padding: '1px 5px',
+                  borderRadius: 'var(--radius-pill)',
+                  fontWeight: 600,
+                }}>
+                  {waitingCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Action buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           {/* Settings — hidden on mobile (moved to bottom nav) */}
           <span className="header-settings-btn">
@@ -494,6 +542,7 @@ function AppInner() {
           {/* New Session */}
           <button
             onClick={handleNewSession}
+            className="hover-opacity"
             style={{
               padding: '0 14px',
               height: '32px',
@@ -501,7 +550,7 @@ function AppInner() {
               alignItems: 'center',
               fontSize: 'var(--text-md)',
               border: '1px solid transparent',
-              borderRadius: 'var(--radius-md)',
+              borderRadius: 'var(--radius-sm)',
               background: 'var(--color-btn-primary-bg)',
               color: 'var(--color-btn-primary-text)',
               cursor: 'pointer',
@@ -509,8 +558,6 @@ function AppInner() {
               gap: '6px',
               transition: 'opacity var(--transition-fast)',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
           >
             + New Session
           </button>
@@ -539,12 +586,7 @@ function AppInner() {
         </div>
       )}
 
-      <NavTabs
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        sessionCount={sessions.length}
-         waitingCount={waitingCount}
-      />
+      {/* NavTabs merged into header — kept for mobile via MobileBottomNav */}
 
       <div id="main-content" style={{ display: 'contents' }}>
       {activeTab === 'sessions' && (
@@ -823,10 +865,11 @@ function HeaderButton({
       onClick={onClick}
       title={title}
       aria-label={title}
+      className="ghost-border hover-bg-surface"
       style={{
         background: 'none',
-        border: '1px solid var(--color-border-subtle)',
-        borderRadius: 'var(--radius-md)',
+        border: 'none',
+        borderRadius: 'var(--radius-sm)',
         padding: '0',
         width: '32px',
         height: '32px',
@@ -838,12 +881,6 @@ function HeaderButton({
         color: 'var(--color-text-secondary)',
         transition: 'background var(--transition-fast)',
         ...style,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'var(--color-bg-surface)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'none';
       }}
     >
       {children}

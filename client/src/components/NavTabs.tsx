@@ -31,8 +31,8 @@ export function NavTabs({ activeTab, onTabChange, sessionCount, waitingCount }: 
         display: 'flex',
         alignItems: 'stretch',
         height: 'var(--nav-tabs-height)',
-        background: 'var(--color-bg-header)',
-        borderBottom: '1px solid var(--color-border-base)',
+        background: 'var(--color-bg-deepest)',
+        borderBottom: 'none',
         flexShrink: 0,
         overflowX: 'auto',
       }}
@@ -50,6 +50,7 @@ export function NavTabs({ activeTab, onTabChange, sessionCount, waitingCount }: 
             id={`tab-${tab.id}`}
             onClick={() => !tab.disabled && onTabChange(tab.id)}
             disabled={tab.disabled}
+            className={!tab.disabled && !isActive ? 'hover-bg-surface' : ''}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -58,7 +59,7 @@ export function NavTabs({ activeTab, onTabChange, sessionCount, waitingCount }: 
               height: '100%',
               border: 'none',
               borderBottom: isActive ? '2px solid var(--color-accent)' : '2px solid transparent',
-              background: isActive ? 'var(--color-surface-bright, var(--color-bg-surface))' : 'transparent',
+              background: isActive ? 'var(--color-surface-highest)' : 'transparent',
               color: tab.disabled
                 ? 'var(--color-text-muted)'
                 : isActive
@@ -72,16 +73,6 @@ export function NavTabs({ activeTab, onTabChange, sessionCount, waitingCount }: 
               transition: 'background var(--transition-fast), color var(--transition-fast)',
               flexShrink: 0,
               whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={(e) => {
-              if (!tab.disabled && !isActive) {
-                e.currentTarget.style.background = 'var(--color-bg-surface)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!tab.disabled && !isActive) {
-                e.currentTarget.style.background = 'transparent';
-              }
             }}
           >
             <Icon size={14} strokeWidth={1.75} />
@@ -104,8 +95,8 @@ export function NavTabs({ activeTab, onTabChange, sessionCount, waitingCount }: 
               <span
                 style={{
                   fontSize: 'var(--text-xs)',
-                  background: 'rgba(251, 146, 60, 0.15)',
-                  color: '#fb923c',
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  color: 'var(--color-status-waiting)',
                   padding: '1px 5px',
                   borderRadius: 'var(--radius-pill)',
                   fontWeight: 600,

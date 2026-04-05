@@ -17,10 +17,10 @@ export function ResizeDivider({ isDragging, onMouseDown, orientation = 'vertical
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         style={{
-          width: '4px',
+          width: '3px',
           cursor: 'col-resize',
           flexShrink: 0,
-          background: isActive ? 'var(--color-accent)' : 'var(--color-border-base)',
+          background: isActive ? 'var(--color-accent)' : 'var(--color-border-ghost)',
           transition: isDragging ? 'none' : 'background 0.15s',
           userSelect: 'none',
         }}
@@ -34,10 +34,10 @@ export function ResizeDivider({ isDragging, onMouseDown, orientation = 'vertical
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{
-        height: '4px',
+        height: '3px',
         cursor: 'row-resize',
         flexShrink: 0,
-        background: isActive ? 'var(--color-accent)' : 'var(--color-border-base)',
+        background: isActive ? 'var(--color-accent)' : 'var(--color-border-ghost)',
         transition: isDragging ? 'none' : 'background 0.15s',
         userSelect: 'none',
       }}

@@ -6,10 +6,10 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Maximize2, Minimize2, Minus, GitCompare, FolderOpen, X, Move, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useTerminal } from '../hooks/useTerminal.js';
-import { StatusDot } from './primitives/index.js';
+import { StatusPill } from './primitives/index.js';
 import { Badge } from './primitives/index.js';
 import { Tooltip } from './primitives/index.js';
-import { STATUS_COLORS, STATUS_LABELS, STATUS_GLOW_SHADOWS } from '../constants/status.js';
+// Status visual handling is now CSS-driven via data-status attribute and StatusPill
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -65,9 +65,6 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
     transition,
   } = useSortable({ id: `session::${session.id}` });
 
-  const borderColor = STATUS_COLORS[session.status] ?? STATUS_COLORS.idle;
-  const glowShadow = STATUS_GLOW_SHADOWS[session.status] ?? STATUS_GLOW_SHADOWS.exited;
-
   const iconBtnStyle: React.CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
@@ -92,10 +89,10 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
   return (
     <div
       ref={setNodeRef}
-      className="terminal-panel"
+      className="terminal-panel terminal-card"
+      data-status={session.status}
       style={{
         ...sortableStyle,
-        border: `2px solid ${borderColor}`,
         borderRadius: 'var(--radius-lg)',
         display: 'flex',
         flexDirection: 'column',
@@ -103,7 +100,6 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
         minHeight: 0,
         flex: 1,
         background: 'var(--color-bg-card)',
-        boxShadow: glowShadow,
       }}
     >
       <div
@@ -112,13 +108,13 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '6px 10px',
+          padding: '4px 8px',
           background: 'var(--color-bg-elevated)',
           flexShrink: 0,
           gap: 'var(--space-2)',
         }}
       >
-        {/* Left: drag + status + name + badge + path */}
+        {/* Left: drag + name + status pill + agent badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
           <Tooltip content="Drag to reorder" position="bottom">
             <span
@@ -137,8 +133,6 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             </span>
           </Tooltip>
 
-          <StatusDot status={session.status} pulse={session.status === 'running'} />
-
           <span
             style={{
               fontWeight: 600,
@@ -152,55 +146,31 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             {session.name}
           </span>
 
+          <StatusPill status={session.status} />
+
           {session.hasGitChanges && (
             <Tooltip content="Uncommitted changes" position="bottom">
-              <AlertTriangle size={13} color="#f59e0b" strokeWidth={2} style={{ flexShrink: 0 }} />
+              <AlertTriangle size={13} color="var(--color-status-waiting)" strokeWidth={2} style={{ flexShrink: 0 }} />
             </Tooltip>
           )}
 
           <Badge label={session.agentType} />
-
-          <span
-            style={{
-              fontSize: 'var(--text-sm)',
-              color: 'var(--color-text-muted)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              fontFamily: 'var(--font-mono)',
-            }}
-          >
-            {session.folderPath}
-          </span>
         </div>
 
-        {/* Right: status label + action buttons */}
+        {/* Right: action buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-          <span
-            style={{
-              fontSize: 'var(--text-xs)',
-              color: borderColor,
-              textTransform: 'uppercase',
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              marginRight: '4px',
-            }}
-          >
-            {STATUS_LABELS[session.status]}
-          </span>
 
           {onToggleDiff && (
             <Tooltip content="Toggle diff view" position="top">
               <button
                 onClick={() => onToggleDiff(session.id)}
+                className={isDiffOpen ? '' : 'hover-bg-surface'}
                 style={{
                   ...iconBtnStyle,
                   color: isDiffOpen ? 'var(--color-accent)' : 'var(--color-text-muted)',
                   background: isDiffOpen ? 'var(--color-accent-subtle)' : 'transparent',
                 }}
                 aria-label="Toggle diff view"
-                onMouseEnter={(e) => { if (!isDiffOpen) e.currentTarget.style.background = 'var(--color-bg-surface)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = isDiffOpen ? 'var(--color-accent-subtle)' : 'transparent'; }}
               >
                 <GitCompare size={14} strokeWidth={1.75} />
               </button>
@@ -211,14 +181,13 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             <Tooltip content="Toggle explorer view" position="top">
               <button
                 onClick={() => onToggleExplorer(session.id)}
+                className={isExplorerOpen ? '' : 'hover-bg-surface'}
                 style={{
                   ...iconBtnStyle,
                   color: isExplorerOpen ? 'var(--color-accent)' : 'var(--color-text-muted)',
                   background: isExplorerOpen ? 'var(--color-accent-subtle)' : 'transparent',
                 }}
                 aria-label="Toggle explorer view"
-                onMouseEnter={(e) => { if (!isExplorerOpen) e.currentTarget.style.background = 'var(--color-bg-surface)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = isExplorerOpen ? 'var(--color-accent-subtle)' : 'transparent'; }}
               >
                 <FolderOpen size={14} strokeWidth={1.75} />
               </button>
@@ -229,10 +198,9 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             <Tooltip content="Focus session" position="top">
               <button
                 onClick={() => onFocus(session.id)}
+                className="hover-bg-surface"
                 style={iconBtnStyle}
                 aria-label="Focus session"
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-surface)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <Maximize2 size={14} strokeWidth={1.75} />
               </button>
@@ -243,10 +211,9 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             <Tooltip content="Minimize to chip" position="top">
               <button
                 onClick={() => onCollapse(session.id)}
+                className="hover-bg-surface"
                 style={iconBtnStyle}
                 aria-label="Minimize session"
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-surface)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <Minus size={14} strokeWidth={1.75} />
               </button>
@@ -257,10 +224,9 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             <Tooltip content="Close focus" position="top">
               <button
                 onClick={onUnfocus}
+                className="hover-bg-surface"
                 style={iconBtnStyle}
                 aria-label="Close focus"
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-surface)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <Minimize2 size={14} strokeWidth={1.75} />
               </button>
@@ -271,16 +237,9 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             <Tooltip content="Restart session" position="top">
               <button
                 onClick={() => onRestart(session.id)}
+                className="hover-success"
                 style={iconBtnStyle}
                 aria-label="Restart session"
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--color-success-subtle, rgba(0,200,100,0.12))';
-                  e.currentTarget.style.color = 'var(--color-success)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = 'var(--color-text-muted)';
-                }}
               >
                 <RotateCcw size={14} strokeWidth={1.75} />
               </button>
@@ -290,16 +249,9 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           <Tooltip content="Close session" position="top">
             <button
               onClick={() => onDelete(session.id)}
+              className="hover-error"
               style={iconBtnStyle}
               aria-label="Close session"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--color-error-subtle)';
-                e.currentTarget.style.color = 'var(--color-error)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--color-text-muted)';
-              }}
             >
               <X size={14} strokeWidth={1.75} />
             </button>

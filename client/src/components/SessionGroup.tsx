@@ -61,7 +61,7 @@ export function SessionGroup({
       className="session-group-card"
       style={{
         ...style,
-        borderLeft: '3px solid var(--color-border-subtle)',
+        borderLeft: 'none',
         borderRadius: 'var(--radius-lg)',
         padding: 'var(--space-2)',
         background: 'var(--color-bg-surface)',
@@ -79,6 +79,8 @@ export function SessionGroup({
           padding: '4px 6px',
           marginBottom: '4px',
           flexShrink: 0,
+          background: 'var(--color-bg-elevated)',
+          borderRadius: 'var(--radius-sm)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
@@ -127,6 +129,7 @@ export function SessionGroup({
         <Tooltip content="New session in this folder" position="left">
           <button
             onClick={() => onCloneSession(folderPath)}
+            className="hover-bg-surface"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -142,14 +145,6 @@ export function SessionGroup({
               transition: 'background var(--transition-fast), color var(--transition-fast)',
             }}
             aria-label="New session in this folder"
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--color-bg-elevated)';
-              e.currentTarget.style.color = 'var(--color-accent)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--color-text-muted)';
-            }}
           >
             <Plus size={14} strokeWidth={2} />
           </button>

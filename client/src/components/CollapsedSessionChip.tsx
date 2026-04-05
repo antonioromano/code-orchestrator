@@ -55,7 +55,7 @@ export function CollapsedSessionChip({ session, onUncollapse }: CollapsedSession
           {session.name}
         </span>
         {session.hasGitChanges && (
-          <AlertTriangle size={12} color="#f59e0b" strokeWidth={2} style={{ flexShrink: 0 }} />
+          <AlertTriangle size={12} color="var(--color-status-waiting)" strokeWidth={2} style={{ flexShrink: 0 }} />
         )}
         <Badge label={session.agentType} />
       </button>

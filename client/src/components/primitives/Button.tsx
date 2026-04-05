@@ -57,7 +57,7 @@ export function Button({
         gap: '6px',
         padding: size === 'sm' ? '4px 10px' : '8px 16px',
         fontSize: size === 'sm' ? 'var(--text-sm)' : 'var(--text-md)',
-        borderRadius: 'var(--radius-md)',
+        borderRadius: 'var(--radius-sm)',
         cursor: isDisabled ? 'not-allowed' : 'pointer',
         opacity: isDisabled ? 0.6 : 1,
         fontWeight: 500,
@@ -65,12 +65,7 @@ export function Button({
         ...VARIANTS[variant],
         ...style,
       }}
-      onMouseEnter={(e) => {
-        if (!isDisabled) e.currentTarget.style.opacity = '0.85';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.opacity = isDisabled ? '0.6' : '1';
-      }}
+      className={isDisabled ? '' : 'hover-opacity'}
     >
       {loading ? 'Loading…' : children}
     </button>

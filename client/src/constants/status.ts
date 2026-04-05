@@ -16,10 +16,19 @@ export const STATUS_LABELS: Record<SessionStatus, string> = {
   exited:  'Exited',
 };
 
-/** Ambient glow shadows for session card status (used alongside a solid border). */
+/** Ambient glow shadows for session card status (used alongside a solid border).
+ *  @deprecated Prefer CSS classes in interactions.css — terminal-card[data-status] */
 export const STATUS_GLOW_SHADOWS: Record<SessionStatus, string> = {
   running: '0 0 10px rgba(174,198,255,0.4)',
   waiting: '0 0 10px rgba(245,158,11,0.4)',
   idle:    '0 0 8px rgba(165,213,112,0.35)',
+  exited:  'none',
+};
+
+/** Radial gradient state glows for non-CSS consumers (e.g. tooltips). */
+export const STATUS_STATE_GLOWS: Record<SessionStatus, string> = {
+  running: 'radial-gradient(ellipse at 50% 0%, rgba(174,198,255,0.08) 0%, transparent 70%)',
+  waiting: 'radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.10) 0%, transparent 70%)',
+  idle:    'radial-gradient(ellipse at 50% 0%, rgba(165,213,112,0.08) 0%, transparent 70%)',
   exited:  'none',
 };

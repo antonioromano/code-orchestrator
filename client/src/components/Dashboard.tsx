@@ -72,12 +72,12 @@ function groupSessionsByFolder(sessions: SessionInfo[]): Map<string, SessionInfo
   return groups;
 }
 
+let refitTimer: ReturnType<typeof setTimeout> | undefined;
 function triggerRefit() {
-  for (const delay of [50, 150, 350]) {
-    setTimeout(() => {
-      window.dispatchEvent(new Event('terminal:refit'));
-    }, delay);
-  }
+  if (refitTimer) clearTimeout(refitTimer);
+  refitTimer = setTimeout(() => {
+    window.dispatchEvent(new Event('terminal:refit'));
+  }, 150);
 }
 
 function FocusedDiffWrapper({
@@ -126,7 +126,7 @@ function FocusedDiffWrapper({
 function GitDirtyIcon() {
   return (
     <Tooltip content="Uncommitted changes" position="bottom">
-      <AlertTriangle size={13} color="#f59e0b" strokeWidth={2} style={{ flexShrink: 0 }} />
+      <AlertTriangle size={13} color="var(--color-status-waiting)" strokeWidth={2} style={{ flexShrink: 0 }} />
     </Tooltip>
   );
 }
@@ -335,7 +335,7 @@ export function Dashboard({
   }
 
   return (
-    <div className="dashboard-outer" style={{ position: 'relative', height: 'calc(100vh - var(--header-height) - var(--nav-tabs-height))', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div className="dashboard-outer" style={{ position: 'relative', height: 'calc(100vh - var(--header-height) - var(--nav-tabs-height))', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--color-bg-deepest)' }}>
       {/* Focus overlay */}
       {isFocused && focusedSession && (
         <div
@@ -357,7 +357,7 @@ export function Dashboard({
               justifyContent: 'space-between',
               padding: '6px 16px',
               background: 'var(--color-bg-elevated)',
-              borderBottom: '1px solid var(--color-border-base)',
+              borderBottom: '1px solid var(--color-border-ghost)',
               flexShrink: 0,
             }}
           >
@@ -454,7 +454,7 @@ export function Dashboard({
               gap: '6px',
               padding: '6px 10px',
               background: 'var(--color-bg-elevated)',
-              borderBottom: '1px solid var(--color-border-base)',
+              borderBottom: '1px solid var(--color-border-ghost)',
               flexShrink: 0,
             }}
           >

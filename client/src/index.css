@@ -1,3 +1,5 @@
+@import './tokens/interactions.css';
+
 * {
   box-sizing: border-box;
 }
@@ -25,6 +27,7 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  background: var(--color-bg-deepest);
 }
 
 #root {
@@ -68,15 +71,16 @@ body {
 /* Non-focused terminal overlay — dims inactive terminals in grid view */
 .terminal-panel {
   position: relative;
+  contain: layout style paint;
 }
 
 .terminal-panel::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(128, 128, 128, 0.25);
+  background: rgba(0, 0, 0, 0.25);
   pointer-events: none;
-  z-index: 2;
+  z-index: 3;
   border-radius: inherit;
   opacity: 1;
   transition: opacity 0.2s ease;

@@ -29,7 +29,7 @@
 
   /* === LAYOUT === */
   --header-height:   52px;
-  --nav-tabs-height: 40px;
+  --nav-tabs-height: 0px;  /* Tabs merged into header */
 
   /* === TYPOGRAPHY === */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -54,7 +54,20 @@
   --color-status-waiting: #f59e0b;
   --color-status-running: #aec6ff;
   --color-status-idle:    #a5d570;
-  --color-status-exited:  #6b7280;
+  --color-status-exited:  #9ca3af;
+
+  /* === GHOST BORDERS === */
+  --color-border-ghost:       rgba(196, 198, 209, 0.15);
+  --color-border-ghost-hover: rgba(196, 198, 209, 0.40);
+
+  /* === GLASS EFFECTS === */
+  --color-bg-glass: rgba(241, 243, 254, 0.80);
+
+  /* === STATUS LED (30% opacity of status colors) === */
+  --color-status-waiting-led: rgba(245, 158, 11, 0.30);
+  --color-status-running-led: rgba(174, 198, 255, 0.30);
+  --color-status-idle-led:    rgba(165, 213, 112, 0.30);
+  --color-status-exited-led:  rgba(156, 163, 175, 0.30);
 
   /* ── LIGHT THEME (default) ── */
   --color-bg-deepest:  #ffffff;
@@ -128,6 +141,13 @@
   --color-warning:          #e0af68;
   --color-warning-bg:       rgba(224, 175, 104, 0.08);
   --color-warning-border:   #e0af68;
+
+  /* === GHOST BORDERS (dark) === */
+  --color-border-ghost:       rgba(67, 71, 81, 0.15);
+  --color-border-ghost-hover: rgba(67, 71, 81, 0.40);
+
+  /* === GLASS EFFECTS (dark) === */
+  --color-bg-glass: rgba(26, 27, 38, 0.80);
 
   /* === PRIMARY BUTTON (dark theme) === */
   --color-btn-primary-bg:   linear-gradient(135deg, #aec6ff 0%, #7aa2f7 100%);

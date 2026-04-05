@@ -106,7 +106,7 @@ export function SessionSidebar({ sessions, activeSessionId, onSelectSession, hea
                     {s.name}
                   </span>
                   {s.hasGitChanges && (
-                    <AlertTriangle size={11} color="#f59e0b" strokeWidth={2} style={{ flexShrink: 0 }} />
+                    <AlertTriangle size={11} color="var(--color-status-waiting)" strokeWidth={2} style={{ flexShrink: 0 }} />
                   )}
                 </div>
                 <div

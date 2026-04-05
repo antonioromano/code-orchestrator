@@ -1,5 +1,6 @@
 export { Tooltip } from './Tooltip.js';
 export { StatusDot } from './StatusDot.js';
+export { StatusPill } from './StatusPill.js';
 export { Badge } from './Badge.js';
 export { IconButton } from './IconButton.js';
 export { Button } from './Button.js';

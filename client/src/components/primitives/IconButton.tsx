@@ -33,8 +33,8 @@ export function IconButton({
     justifyContent: 'center',
     width: dim,
     height: dim,
-    borderRadius: 'var(--radius-md)',
-    border: variant === 'outlined' ? '1px solid var(--color-border-subtle)' : 'none',
+    borderRadius: 'var(--radius-sm)',
+    border: variant === 'outlined' ? 'none' : 'none',
     background: active ? 'var(--color-accent-subtle)' : 'transparent',
     color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
     cursor: disabled ? 'not-allowed' : 'pointer',
@@ -45,19 +45,17 @@ export function IconButton({
     ...style,
   };
 
+  const hoverClass = variant === 'outlined' ? 'ghost-border' : '';
+  const btnClass = [hoverClass, !disabled && !active ? 'hover-bg-surface' : ''].filter(Boolean).join(' ');
+
   return (
     <Tooltip content={label} position="top">
       <button
         aria-label={label}
         onClick={disabled ? undefined : onClick}
         disabled={disabled}
+        className={btnClass}
         style={base}
-        onMouseEnter={(e) => {
-          if (!disabled) e.currentTarget.style.background = 'var(--color-bg-surface)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = active ? 'var(--color-accent-subtle)' : 'transparent';
-        }}
       >
         <Icon size={iconSize} strokeWidth={1.75} />
       </button>
