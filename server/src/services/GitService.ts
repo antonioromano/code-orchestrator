@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { appendFile } from 'fs/promises';
 import path from 'path';
-import type { GitDiffResponse, PatchSelectionRequest, PatchOperationResponse, CommitResponse, GitLogResponse, GitBranchesResponse } from '@remote-orchestrator/shared';
+import type { GitDiffResponse, GitFileStatusCode, GitFileStatusResponse, PatchSelectionRequest, PatchOperationResponse, CommitResponse, GitLogResponse, GitBranchesResponse } from '@remote-orchestrator/shared';
 
 function findGit(): string {
   try {
@@ -417,6 +417,73 @@ export class GitService {
     } catch (err) {
       const e = err as { message?: string; stderr?: string };
       return { success: false, error: e.stderr || e.message || 'Create branch failed' };
+    }
+  }
+
+  async getFileStatuses(folderPath: string): Promise<GitFileStatusResponse> {
+    const isRepo = await this.isGitRepo(folderPath);
+    if (!isRepo) {
+      return { statuses: {}, gitRoot: '' };
+    }
+
+    try {
+      const [statusOutput, toplevel] = await Promise.all([
+        execGit(['status', '--porcelain', '--ignored'], folderPath),
+        execGit(['rev-parse', '--show-toplevel'], folderPath),
+      ]);
+
+      const gitRoot = toplevel.trim();
+      const statuses: Record<string, GitFileStatusCode> = {};
+
+      // Porcelain format: "XY PATH" where X=index status, Y=worktree status
+      for (const line of statusOutput.split('\n')) {
+        if (line.length < 4) continue;
+
+        const xy = line.substring(0, 2);
+        const filePart = line.substring(3);
+
+        // Ignored files: "!! path"
+        if (xy === '!!') {
+          statuses[filePart] = '!!';
+          continue;
+        }
+
+        // Untracked files: "?? path"
+        if (xy === '??') {
+          statuses[filePart] = '?';
+          continue;
+        }
+
+        // Renames/copies: "R  old -> new" or "C  old -> new"
+        const x = xy[0];
+        const y = xy[1];
+
+        let resolvedPath = filePart;
+        if (x === 'R' || x === 'C' || y === 'R' || y === 'C') {
+          const arrowIdx = filePart.indexOf(' -> ');
+          if (arrowIdx !== -1) {
+            resolvedPath = filePart.substring(arrowIdx + 4);
+          }
+          statuses[resolvedPath] = x === 'R' || y === 'R' ? 'R' : 'C';
+          continue;
+        }
+
+        // Collapse the two-char XY into one code. We don't distinguish staged
+        // vs unstaged, so prefer the more severe: D wins over everything.
+        if (x === 'D' || y === 'D') {
+          statuses[resolvedPath] = 'D';
+        } else if (y !== ' ' && y !== '?') {
+          statuses[resolvedPath] = y as GitFileStatusCode;
+        } else if (x !== ' ' && x !== '?') {
+          statuses[resolvedPath] = x as GitFileStatusCode;
+        } else {
+          statuses[resolvedPath] = 'M'; // fallback
+        }
+      }
+
+      return { statuses, gitRoot };
+    } catch {
+      return { statuses: {}, gitRoot: '' };
     }
   }
 

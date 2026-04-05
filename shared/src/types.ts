@@ -187,6 +187,15 @@ export interface GitCreateBranchRequest {
   from?: string;
 }
 
+// Git file status types (for Explorer tree indicators)
+
+export type GitFileStatusCode = 'M' | 'A' | 'D' | 'R' | 'C' | '?' | '!!';
+
+export interface GitFileStatusResponse {
+  statuses: Record<string, GitFileStatusCode>;
+  gitRoot: string;
+}
+
 export interface DirectoryEntry {
   name: string;
   path: string;
