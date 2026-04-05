@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import parseDiff from 'parse-diff';
-import { GitCommit, EyeOff } from 'lucide-react';
+import { GitCommit, EyeOff, WrapText } from 'lucide-react';
 import type { GitDiffResponse, SessionInfo, GitBranchesResponse } from '@remote-orchestrator/shared';
 import { api } from '../services/api.js';
 import { DiffHunk } from './DiffHunk.js';
@@ -90,6 +90,7 @@ export function GitDiffPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [showFullKey, setShowFullKey] = useState<string | null>(null);
   const [collapseAllKey, setCollapseAllKey] = useState(0);
+  const [wordWrap, setWordWrap] = useState(() => localStorage.getItem('gitdiff-word-wrap') === 'true');
   const [collapsedSections, setCollapsedSections] = useState<Set<SectionKey>>(new Set());
   const [untrackedContent, setUntrackedContent] = useState<Map<string, string | 'loading' | 'error'>>(new Map());
   const [trackingFile, setTrackingFile] = useState<string | null>(null);
@@ -472,7 +473,9 @@ export function GitDiffPanel({
                           fontSize: '12px',
                           fontFamily: 'var(--font-mono)',
                           color: 'var(--color-text-primary)',
-                          whiteSpace: 'pre',
+                          whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                          wordBreak: wordWrap ? 'break-all' : undefined,
+                          overflowWrap: wordWrap ? 'break-word' : undefined,
                           lineHeight: '20px',
                           overflow: 'hidden',
                         }}
@@ -562,6 +565,7 @@ export function GitDiffPanel({
                   searchQuery={searchLower || undefined}
                   commitMode={commitModeForHunk}
                   onRevertHunk={onRevertHunk}
+                  wordWrap={wordWrap}
                 />
               );
             })}
@@ -801,6 +805,29 @@ export function GitDiffPanel({
               {'\u2261'}
             </button>
           )}
+          {!isEmpty && !error && (
+            <button
+              onClick={() => setWordWrap(w => { const next = !w; localStorage.setItem('gitdiff-word-wrap', String(next)); return next; })}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: wordWrap ? 'var(--color-accent-subtle)' : 'none',
+                border: wordWrap ? '1px solid var(--color-accent)' : '1px solid transparent',
+                borderRadius: '4px',
+                color: wordWrap ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: wordWrap ? 600 : 400,
+                padding: '2px 6px',
+                lineHeight: 1,
+              }}
+              title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
+            >
+              <WrapText size={11} strokeWidth={2} />
+              Wrap
+            </button>
+          )}
           {/* Commit mode toggle — shown in all views */}
           {!isEmpty && !error && (
             <button
@@ -920,6 +947,7 @@ export function GitDiffPanel({
                       searchQuery={searchLower || undefined}
                       commitMode={commitModeProps}
                       forceShowFull={commitModeActive}
+                      wordWrap={wordWrap}
                       onRevertChunk={!commitModeActive ? async (chunkIndex, totalChanges) => {
                         await actions.discardChunk(currentSessionId, filePath, chunkIndex, totalChanges);
                         onRefresh();
@@ -933,7 +961,7 @@ export function GitDiffPanel({
               <div>
                 {sectionHeader('staged', commitModeActive ? 'Already Staged' : 'Staged Changes', filteredStaged.length, filteredUnstaged.length > 0)}
                 {!collapsedSections.has('staged') && filteredStaged.map((file, i) => (
-                  <DiffFileSection key={`staged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} />
+                  <DiffFileSection key={`staged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} wordWrap={wordWrap} />
                 ))}
               </div>
             )}
@@ -954,6 +982,7 @@ export function GitDiffPanel({
                       isSelected: commitMode.selections.has(filePath),
                       onToggle: () => actions.toggleFile(filePath, { filePath, hunks: [], isUntracked: true }),
                     } : undefined}
+                    wordWrap={wordWrap}
                   />
                 ))}
               </div>
@@ -1244,9 +1273,10 @@ interface UntrackedFileRowProps {
   onIgnore: () => void;
   isIgnoring?: boolean;
   commitModeToggle?: { isSelected: boolean; onToggle: () => void };
+  wordWrap?: boolean;
 }
 
-function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, onIgnore, isIgnoring, commitModeToggle }: UntrackedFileRowProps) {
+function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, onIgnore, isIgnoring, commitModeToggle, wordWrap }: UntrackedFileRowProps) {
   const shortName = filePath.split('/').pop() ?? filePath;
   const [expanded, setExpanded] = useState(false);
   // null = not fetched yet, 'error' = failed/binary, string = content
@@ -1325,7 +1355,7 @@ function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, on
                 {content.split('\n').map((line, i) => (
                   <tr key={i} style={{ background: theme === 'dark' ? 'rgba(165,213,112,0.10)' : 'rgba(165,213,112,0.12)' }}>
                     <td style={{ width: '40px', minWidth: '40px', padding: '0 4px', textAlign: 'right', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', userSelect: 'none', lineHeight: '20px' }}>{i + 1}</td>
-                    <td style={{ padding: '0 8px', fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', whiteSpace: 'pre', lineHeight: '20px', overflow: 'hidden' }}>{line}</td>
+                    <td style={{ padding: '0 8px', fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', whiteSpace: wordWrap ? 'pre-wrap' : 'pre', wordBreak: wordWrap ? 'break-all' : undefined, overflowWrap: wordWrap ? 'break-word' : undefined, lineHeight: '20px', overflow: 'hidden' }}>{line}</td>
                   </tr>
                 ))}
               </tbody>

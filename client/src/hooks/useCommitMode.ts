@@ -117,8 +117,6 @@ export function useCommitMode(): UseCommitModeResult {
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; });
 
-  // Track the diff fingerprint at commit mode entry to detect stale diffs
-  const diffFingerprintRef = useRef<string>('');
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleCommitMode = useCallback(() => {

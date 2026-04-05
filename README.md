@@ -34,7 +34,7 @@ A web-based dashboard for managing multiple AI coding agent sessions simultaneou
 
 ```bash
 git clone https://github.com/antonioromano/code-orchestrator.git
-cd remote-orchestrator
+cd code-orchestrator
 ./setup.sh
 ```
 

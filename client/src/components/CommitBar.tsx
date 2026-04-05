@@ -21,7 +21,7 @@ export function CommitBar({
   fileMetas,
   untrackedFiles,
   commitModeResult,
-  onClose,
+  onClose: _onClose,
   onSelectAll,
   onClearAll,
   hasOnlyUntrackedSelected,
