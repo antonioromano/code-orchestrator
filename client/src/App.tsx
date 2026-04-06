@@ -143,7 +143,7 @@ function AppInner() {
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
-  const refitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const refitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const triggerRefit = useCallback(() => {
     if (refitTimerRef.current) clearTimeout(refitTimerRef.current);
     refitTimerRef.current = setTimeout(() => {
@@ -177,6 +177,19 @@ function AppInner() {
       next.set(sessionId, { ...current, ...update });
       return next;
     });
+  }, []);
+
+  // Cross-tab navigation: Diff → Explorer (with file pre-selected)
+  const handleOpenFileInExplorer = useCallback((absolutePath: string) => {
+    setExplorerState({ selectedFilePath: absolutePath, searchQuery: '' });
+    setActiveTab('explorer');
+  }, []);
+
+  // Cross-tab navigation: Explorer → Diff (optionally with a file to highlight)
+  const [diffSearchQuery, setDiffSearchQuery] = useState('');
+  const handleOpenDiffView = useCallback((fileName?: string) => {
+    setDiffSearchQuery(fileName ?? '');
+    setActiveTab('git-diff');
   }, []);
 
   const toggleFullscreen = useCallback(() => {
@@ -624,6 +637,8 @@ function AppInner() {
                 sessions={sessions}
                 currentSessionId={focusedSessionId ?? sessions[0].id}
                 onSelectSession={setFocusedSessionId}
+                onOpenInExplorer={handleOpenFileInExplorer}
+                initialSearchQuery={diffSearchQuery}
               />
             </ErrorBoundary>
           ) : (
@@ -652,6 +667,7 @@ function AppInner() {
               initialSearchQuery={explorerState.searchQuery}
               onExplorerStateChange={setExplorerState}
               socket={socket}
+              onOpenInDiff={handleOpenDiffView}
             />
           </ErrorBoundary>
         </div>
@@ -813,6 +829,8 @@ function GlobalGitDiffView({
   sessions,
   currentSessionId,
   onSelectSession,
+  onOpenInExplorer,
+  initialSearchQuery,
 }: {
   sessionId: string;
   sessionStatus: string;
@@ -820,6 +838,8 @@ function GlobalGitDiffView({
   sessions: SessionInfo[];
   currentSessionId: string;
   onSelectSession: (id: string) => void;
+  onOpenInExplorer?: (absolutePath: string) => void;
+  initialSearchQuery?: string;
 }) {
   const { diff, isLoading, error, refresh } = useGitDiff({
     sessionId,
@@ -842,6 +862,8 @@ function GlobalGitDiffView({
         onToggleFullscreen={() => {}}
         onRefresh={refresh}
         showHeaderControls={false}
+        onOpenInExplorer={onOpenInExplorer}
+        initialSearchQuery={initialSearchQuery}
       />
     </div>
   );

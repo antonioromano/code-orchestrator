@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import type parseDiff from 'parse-diff';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, FolderOpen } from 'lucide-react';
 import { DiffHunk } from './DiffHunk.js';
-import { TriStateCheckbox } from './primitives/index.js';
+import { TriStateCheckbox, InlineIconLink } from './primitives/index.js';
 import type { FileSelection, FileMeta, TriState } from '../hooks/useCommitMode.js';
 
 const MAX_LINES_BEFORE_TRUNCATE = 500;
@@ -28,9 +28,10 @@ interface DiffFileSectionProps {
   forceShowFull?: boolean;
   wordWrap?: boolean;
   onRevertChunk?: (chunkIndex: number, totalChanges: number) => void;
+  onOpenInExplorer?: () => void;
 }
 
-export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, searchQuery, commitMode, forceShowFull, wordWrap, onRevertChunk }: DiffFileSectionProps) {
+export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, searchQuery, commitMode, forceShowFull, wordWrap, onRevertChunk, onOpenInExplorer }: DiffFileSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [showFull, setShowFull] = useState(forceShowFull ?? false);
 
@@ -111,6 +112,9 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
         >
           {fileName || 'unknown'}
         </span>
+        {onOpenInExplorer && (
+          <InlineIconLink icon={FolderOpen} label="Open in Explorer" onClick={() => onOpenInExplorer()} />
+        )}
         {isNew && (
           <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 600 }}>NEW</span>
         )}

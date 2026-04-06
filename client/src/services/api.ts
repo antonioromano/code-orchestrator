@@ -1,4 +1,4 @@
-import type { SessionInfo, CreateSessionRequest, PathCompletionResponse, DirectoryChildrenResponse, FileContentResponse, FileSearchResponse, GitDiffResponse, NgrokStatus, NgrokStartResponse, AppConfig, AgentDetectionResponse, AuthStatus, AuthLoginResponse, UpdateStatus, UpdateApplyResponse, PatchSelectionRequest, PatchOperationResponse, CommitRequest, CommitResponse, GitLogResponse, WriteFileRequest, WriteFileResponse, GitBranchesResponse } from '@remote-orchestrator/shared';
+import type { SessionInfo, CreateSessionRequest, PathCompletionResponse, DirectoryChildrenResponse, FileContentResponse, FileSearchResponse, GitDiffResponse, GitFileStatusResponse, NgrokStatus, NgrokStartResponse, AppConfig, AgentDetectionResponse, AuthStatus, AuthLoginResponse, UpdateStatus, UpdateApplyResponse, PatchSelectionRequest, PatchOperationResponse, CommitRequest, CommitResponse, GitLogResponse, WriteFileRequest, WriteFileResponse, GitBranchesResponse } from '@remote-orchestrator/shared';
 
 const API_BASE = '/api';
 const TOKEN_KEY = 'orchestrator_auth_token';
@@ -122,6 +122,11 @@ export const api = {
 
   getSessionDiff: async (sessionId: string): Promise<GitDiffResponse> => {
     const res = await authFetch(`${API_BASE}/sessions/${sessionId}/diff`);
+    return res.json();
+  },
+
+  getGitFileStatuses: async (sessionId: string): Promise<GitFileStatusResponse> => {
+    const res = await authFetch(`${API_BASE}/sessions/${sessionId}/git-file-statuses`);
     return res.json();
   },
 
