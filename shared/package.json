@@ -3,5 +3,8 @@
   "version": "0.1.5",
   "private": true,
   "main": "src/types.ts",
-  "types": "src/types.ts"
+  "types": "src/types.ts",
+  "scripts": {
+    "build": "echo 'shared: types-only, no build needed'"
+  }
 }

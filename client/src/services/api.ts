@@ -224,11 +224,11 @@ export const api = {
     return res.json();
   },
 
-  startNgrok: async (port: number = 5173, password?: string): Promise<NgrokStartResponse> => {
+  startNgrok: async (port?: number, password?: string): Promise<NgrokStartResponse> => {
     const res = await authFetch(`${API_BASE}/ngrok/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ port, password }),
+      body: JSON.stringify({ ...(port != null && { port }), password }),
     });
     if (!res.ok) {
       const err = await res.json() as { error?: string };
