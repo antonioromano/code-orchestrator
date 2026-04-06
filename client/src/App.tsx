@@ -19,7 +19,6 @@ import { SettingsModal } from './components/SettingsModal.js';
 import { PasswordGate } from './components/PasswordGate.js';
 import { GitDiffPanel } from './components/GitDiffPanel.js';
 import { ExplorerPanel } from './components/ExplorerPanel.js';
-import { NavTabs } from './components/NavTabs.js';
 import type { AppTab } from './components/NavTabs.js';
 import { MobileBottomNav } from './components/MobileBottomNav.js';
 import { api, setToken } from './services/api.js';
@@ -144,7 +143,7 @@ function AppInner() {
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
-  const refitTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const refitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const triggerRefit = useCallback(() => {
     if (refitTimerRef.current) clearTimeout(refitTimerRef.current);
     refitTimerRef.current = setTimeout(() => {
