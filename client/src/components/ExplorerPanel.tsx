@@ -34,7 +34,7 @@ import { syntaxTheme } from '../utils/syntaxTheme';
 import { langFromPath } from '../utils/langFromPath';
 import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon, PanelLeft, PanelLeftClose, Terminal as TerminalIcon } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
-import type { SessionInfo, FileContentResponse, FileSearchResult, ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
+import type { SessionInfo, FileContentResponse, FileSearchResult, GitFileStatusCode, ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { ExplorerFolderTree } from './ExplorerFolderTree.js';
 import { SessionSidebar } from './SessionSidebar.js';
 import { ResizeDivider } from './ResizeDivider.js';
@@ -237,7 +237,9 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
   const [isSearching, setIsSearching] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [gitStatusMap, setGitStatusMap] = useState<Record<string, GitFileStatusCode>>({});
   const fetchIdRef = useRef(0);
+  const gitStatusFetchIdRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const treePanelRef = useRef<HTMLDivElement>(null);
@@ -303,6 +305,43 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
       setSelectedSessionId(initialId);
     }
   }, [sessions, selectedSessionId, focusedSessionId, embedded]);
+
+  // Fetch git file statuses for the selected session (non-blocking, async pop-in)
+  useEffect(() => {
+    if (!selectedSessionId) {
+      setGitStatusMap({});
+      return;
+    }
+    const id = ++gitStatusFetchIdRef.current;
+    api.getGitFileStatuses(selectedSessionId).then(response => {
+      if (gitStatusFetchIdRef.current !== id) return;
+      if (!response.gitRoot) {
+        setGitStatusMap({});
+        return;
+      }
+      const absMap: Record<string, GitFileStatusCode> = {};
+      const priorityOrder: Record<string, number> = { 'D': 4, 'M': 3, 'A': 3, 'R': 3, 'C': 3, '?': 2 };
+      const gitRootDepth = response.gitRoot.split('/').length;
+      for (const [relPath, status] of Object.entries(response.statuses)) {
+        const absPath = response.gitRoot + '/' + relPath;
+        absMap[absPath] = status;
+        if (status === '!!') continue;
+        const parts = absPath.split('/');
+        for (let i = gitRootDepth; i < parts.length; i++) {
+          const folderPath = parts.slice(0, i).join('/');
+          const existing = absMap[folderPath];
+          const existingPriority = existing ? (priorityOrder[existing] ?? 0) : 0;
+          const newPriority = priorityOrder[status] ?? 0;
+          if (newPriority > existingPriority) {
+            absMap[folderPath] = status;
+          }
+        }
+      }
+      setGitStatusMap(absMap);
+    }).catch(() => {
+      if (gitStatusFetchIdRef.current === id) setGitStatusMap({});
+    });
+  }, [selectedSessionId, treeKey]);
 
   // Fetch file content on mount if we have an initial file path (restored across tab switches)
   useEffect(() => {
@@ -1092,6 +1131,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                     onFileSelect={handleFileSelect}
                     onFileDoubleClick={handleFileDoubleClick}
                     selectedFilePath={selectedFilePath}
+                    gitStatusMap={gitStatusMap}
                   />
                 )}
               </div>
@@ -1214,6 +1254,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                   onFileSelect={handleFileSelect}
                   onFileDoubleClick={handleFileDoubleClick}
                   selectedFilePath={selectedFilePath}
+                  gitStatusMap={gitStatusMap}
                 />
               )}
             </div>
