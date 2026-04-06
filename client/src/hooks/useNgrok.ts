@@ -25,7 +25,7 @@ export function useNgrok(socket: TypedSocket) {
     setLoading(true);
     setError(null);
     try {
-      await api.startNgrok(5173, password);
+      await api.startNgrok(undefined, password);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start tunnel';
       setError(message);

@@ -1,0 +1,597 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# --- Resolve project root (follows symlinks, works on macOS and Linux) ---
+resolve_project_root() {
+  local source="${BASH_SOURCE[0]}"
+  while [ -L "$source" ]; do
+    local dir
+    dir="$(cd -P "$(dirname "$source")" && pwd -P)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+  local script_dir
+  script_dir="$(cd -P "$(dirname "$source")" && pwd -P)"
+  echo "$(cd "$script_dir/.." && pwd -P)"
+}
+
+resolve_absolute_path() {
+  local base="$1" path="$2"
+  case "$path" in
+    /*) echo "$path" ;;
+    *)  echo "$(cd "$base" && pwd -P)/$path" ;;
+  esac
+}
+
+PROJECT_ROOT="$(resolve_project_root)"
+
+# --- Configuration from environment ---
+validate_port() {
+  local port="$1"
+  if ! [[ "$port" =~ ^[0-9]+$ ]]; then
+    echo "Error: ARGUS_PORT must be a number (got '$port')." >&2
+    exit 1
+  fi
+  if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+    echo "Error: ARGUS_PORT must be between 1 and 65535 (got '$port')." >&2
+    exit 1
+  fi
+}
+
+if [ -n "${ARGUS_PORT:-}" ]; then
+  validate_port "$ARGUS_PORT"
+  PORT="$ARGUS_PORT"
+  PORT_SOURCE="ARGUS_PORT"
+else
+  PORT="5400"
+  PORT_SOURCE="default"
+fi
+
+if [ -n "${ARGUS_DATA_DIR:-}" ]; then
+  DATA_DIR="$(resolve_absolute_path "$PROJECT_ROOT" "$ARGUS_DATA_DIR")"
+  DATA_DIR_SOURCE="ARGUS_DATA_DIR"
+else
+  DATA_DIR="$PROJECT_ROOT/server/data"
+  DATA_DIR_SOURCE="default"
+fi
+
+PID_FILE="$DATA_DIR/argus.pid"
+LOG_FILE="$DATA_DIR/argus.log"
+
+# --- Node.js helpers ---
+
+get_node_version() {
+  node -v | sed 's/v//' | cut -d. -f1
+}
+
+require_node() {
+  if ! command -v node &>/dev/null; then
+    echo "Error: Node.js is not installed. Please install Node.js 18+." >&2
+    exit 1
+  fi
+  if [ "$(get_node_version)" -lt 18 ]; then
+    echo "Error: Node.js 18+ is required (found $(node -v))." >&2
+    exit 1
+  fi
+}
+
+require_node_modules() {
+  if [ ! -d "$PROJECT_ROOT/node_modules" ]; then
+    echo "Error: node_modules not found. Run 'npm install' first." >&2
+    exit 1
+  fi
+}
+
+check_native_modules() {
+  # Try loading node-pty to catch ABI mismatches after a Node.js upgrade
+  local check
+  check=$(cd "$PROJECT_ROOT" && node -e "try { require('node-pty') } catch(e) { console.log(e.message) }" 2>&1)
+  if echo "$check" | grep -qi "MODULE_NOT_FOUND\|was compiled against\|NODE_MODULE_VERSION\|cannot open\|Failed to load native module"; then
+    echo "Native modules are out of date (Node.js version may have changed)."
+    echo "Rebuilding..."
+    (cd "$PROJECT_ROOT" && npm rebuild)
+  fi
+}
+
+get_package_version() {
+  node -p "JSON.parse(require('fs').readFileSync('$PROJECT_ROOT/package.json','utf8')).version" 2>/dev/null || echo "unknown"
+}
+
+# --- Preflight & build ---
+
+preflight() {
+  require_node
+  require_node_modules
+  check_native_modules
+  mkdir -p "$DATA_DIR"
+}
+
+ensure_built() {
+  if [ ! -f "$PROJECT_ROOT/server/dist/index.js" ]; then
+    echo "Build output not found. Running npm run build..."
+    (cd "$PROJECT_ROOT" && npm run build)
+  fi
+}
+
+# --- PID management ---
+
+read_pid() {
+  if [ -f "$PID_FILE" ]; then
+    cat "$PID_FILE"
+  fi
+}
+
+is_running() {
+  local pid
+  pid=$(read_pid)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+clean_stale_pid() {
+  if [ -f "$PID_FILE" ] && ! is_running; then
+    rm -f "$PID_FILE"
+  fi
+}
+
+wait_for_exit() {
+  local pid="$1" timeout="${2:-5}"
+  local waited=0
+  while [ $waited -lt "$timeout" ] && kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
+force_kill_if_alive() {
+  local pid="$1"
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "Process did not exit gracefully, sending SIGKILL..."
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+}
+
+# --- Server process ---
+
+port_listening() {
+  if command -v curl &>/dev/null; then
+    curl -s --max-time 2 "http://localhost:$PORT/api/health" >/dev/null 2>&1
+  elif command -v wget &>/dev/null; then
+    wget -q --timeout=2 -O /dev/null "http://localhost:$PORT/api/health" 2>/dev/null
+  else
+    return 1
+  fi
+}
+
+port_held_by_pid() {
+  local pid="$1"
+  if command -v lsof &>/dev/null; then
+    # -sTCP:LISTEN is macOS/BSD syntax; omit on Linux where it may not be supported
+    lsof -i :"$PORT" -t 2>/dev/null | grep -q "^${pid}$"
+  else
+    # No lsof — fall back to process alive + port responding
+    kill -0 "$pid" 2>/dev/null && port_listening
+  fi
+}
+
+start_background() {
+  # Check if something is already listening on the port before we start
+  if port_listening; then
+    echo "Error: Port $PORT is already in use." >&2
+    echo "Choose a different ARGUS_PORT or stop the process using that port." >&2
+    exit 1
+  fi
+
+  # Rotate log if over 10MB
+  if [ -f "$LOG_FILE" ]; then
+    local size
+    size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+    if [ "$size" -gt 10485760 ]; then
+      mv "$LOG_FILE" "${LOG_FILE}.old"
+    fi
+  fi
+  : > "$LOG_FILE"
+
+  NODE_ENV=production PORT="$PORT" DATA_DIR="$DATA_DIR" \
+    nohup node "$PROJECT_ROOT/server/dist/index.js" > "$LOG_FILE" 2>&1 &
+  local pid=$!
+  echo "$pid" > "$PID_FILE"
+  disown
+
+  # Wait up to 5 seconds for our process to own the port
+  local waited=0
+  while [ $waited -lt 5 ]; do
+    sleep 1
+    waited=$((waited + 1))
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "Error: Argus failed to start. Check $LOG_FILE for details." >&2
+      rm -f "$PID_FILE"
+      exit 1
+    fi
+    if port_held_by_pid "$pid"; then
+      echo ""
+      echo "Argus started (PID $pid)."
+      echo "  Dashboard: http://localhost:$PORT"
+      echo ""
+      echo "Use 'argus logs'   to see output."
+      echo "Use 'argus stop'   to shut down."
+      return 0
+    fi
+  done
+
+  # Process is alive but not holding the port — kill it and report
+  echo "Error: Argus process started but failed to bind port $PORT." >&2
+  echo "Check $LOG_FILE for details." >&2
+  kill "$pid" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  exit 1
+}
+
+print_config() {
+  echo "  ARGUS_PORT=$PORT ($PORT_SOURCE)"
+  echo "  ARGUS_DATA_DIR=$DATA_DIR ($DATA_DIR_SOURCE)"
+}
+
+# --- Git helpers ---
+
+fetch_tags() {
+  echo "Fetching tags..."
+  git fetch --tags origin 2>/dev/null || git fetch --tags
+}
+
+get_latest_tag() {
+  git tag -l 'v*' --sort=-version:refname | head -1
+}
+
+require_tag_exists() {
+  local tag="$1"
+  if ! git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+    echo "Error: Tag '$tag' not found." >&2
+    echo "Available tags:"
+    git tag -l 'v*' --sort=-version:refname | head -10
+    exit 1
+  fi
+}
+
+stash_if_dirty() {
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "Stashing uncommitted changes..."
+    git stash --include-untracked
+    echo "  (recover later with 'git stash pop')"
+  fi
+}
+
+# --- Subcommands ---
+
+cmd_start() {
+  preflight
+  ensure_built
+  clean_stale_pid
+
+  if is_running; then
+    echo "Argus is already running (PID $(read_pid)) on port $PORT."
+    exit 0
+  fi
+
+  echo "Starting Argus in background..."
+  print_config
+  start_background
+}
+
+cmd_stop() {
+  clean_stale_pid
+
+  if is_running; then
+    local pid
+    pid=$(read_pid)
+    echo "Stopping Argus (PID $pid)..."
+    kill "$pid" 2>/dev/null || true
+    wait_for_exit "$pid" 5
+    force_kill_if_alive "$pid"
+    rm -f "$PID_FILE"
+    echo "Argus stopped."
+  elif port_listening; then
+    echo "Argus is running on port $PORT but not managed by 'argus start'."
+    echo "It may be managed by launchd or systemd. To stop it:"
+    echo "  macOS:  launchctl unload ~/Library/LaunchAgents/com.user.argus.plist"
+    echo "  Linux:  systemctl --user stop argus"
+  else
+    echo "Argus is not running."
+    rm -f "$PID_FILE"
+  fi
+}
+
+cmd_status() {
+  clean_stale_pid
+
+  if is_running; then
+    echo "Argus is running (PID $(read_pid))."
+    echo "  ARGUS_PORT=$PORT ($PORT_SOURCE)"
+    echo "  ARGUS_DATA_DIR=$DATA_DIR ($DATA_DIR_SOURCE)"
+    echo "  Dashboard: http://localhost:$PORT"
+  elif port_listening; then
+    echo "Argus is running on port $PORT (managed externally, e.g. launchd/systemd)."
+    echo "  Dashboard: http://localhost:$PORT"
+  else
+    echo "Argus is not running."
+  fi
+}
+
+find_log_file() {
+  # 1. argus-managed log (from argus start)
+  if [ -f "$LOG_FILE" ]; then
+    echo "$LOG_FILE"
+    return 0
+  fi
+
+  # 2. Ask launchd where it writes logs (macOS)
+  if command -v launchctl &>/dev/null; then
+    local plist_log
+    plist_log=$(launchctl dumpstate 2>/dev/null | grep -A20 'com.user.argus' | grep -i 'stdout' | head -1 | sed 's/.*= //' | tr -d ' "' || true)
+    if [ -n "$plist_log" ] && [ -f "$plist_log" ]; then
+      echo "$plist_log"
+      return 0
+    fi
+    # Fallback: check the plist file directly
+    local plist_path="$HOME/Library/LaunchAgents/com.user.argus.plist"
+    if [ -f "$plist_path" ]; then
+      plist_log=$(/usr/libexec/PlistBuddy -c "Print :StandardOutPath" "$plist_path" 2>/dev/null || true)
+      if [ -n "$plist_log" ] && [ -f "$plist_log" ]; then
+        echo "$plist_log"
+        return 0
+      fi
+    fi
+  fi
+
+  # 3. systemd journal (Linux) — can't return a file, but signal the caller
+  if command -v journalctl &>/dev/null && systemctl --user is-active argus &>/dev/null 2>&1; then
+    echo "journalctl"
+    return 0
+  fi
+
+  return 1
+}
+
+cmd_logs() {
+  local log
+  log=$(find_log_file) || true
+
+  if [ "$log" = "journalctl" ]; then
+    echo "Argus is managed by systemd. Tailing journal..."
+    echo ""
+    exec journalctl --user -u argus -f
+  fi
+
+  if [ -z "$log" ]; then
+    echo "No log file found." >&2
+    echo "  Checked: $LOG_FILE" >&2
+    echo ""
+    echo "If running via systemd, use: journalctl --user -u argus -f" >&2
+    exit 1
+  fi
+  echo "Tailing $log (Ctrl+C to stop)..."
+  echo ""
+  tail -f "$log"
+}
+
+cmd_run() {
+  preflight
+  ensure_built
+
+  if port_listening; then
+    echo "Error: Port $PORT is already in use." >&2
+    echo "Choose a different ARGUS_PORT or stop the process using that port." >&2
+    exit 1
+  fi
+
+  if [ -t 1 ]; then
+    echo "Starting Argus (Ctrl+C to stop)..."
+  else
+    echo "Starting Argus..."
+  fi
+  print_config
+  echo ""
+
+  exec env NODE_ENV=production PORT="$PORT" DATA_DIR="$DATA_DIR" \
+    node "$PROJECT_ROOT/server/dist/index.js"
+}
+
+cmd_update() {
+  local target_tag="$1"
+
+  cd "$PROJECT_ROOT"
+  fetch_tags
+
+  if [ -z "$target_tag" ]; then
+    target_tag=$(get_latest_tag)
+    if [ -z "$target_tag" ]; then
+      echo "Error: No version tags found in remote." >&2
+      exit 1
+    fi
+    echo "Latest tag: $target_tag"
+  else
+    require_tag_exists "$target_tag"
+  fi
+
+  echo "Current version: $(get_package_version)"
+  echo "Target version:  $target_tag"
+  echo ""
+
+  stash_if_dirty
+
+  echo "Checking out $target_tag..."
+  git checkout "$target_tag"
+
+  echo "Installing dependencies..."
+  npm install
+
+  echo "Building..."
+  npm run build
+
+  echo ""
+  echo "Update complete: $target_tag"
+
+  if is_running; then
+    echo ""
+    echo "Restarting daemon..."
+    cmd_stop
+    cmd_start
+  else
+    echo "Run 'argus start' or 'argus' to launch."
+  fi
+}
+
+cmd_setup() {
+  local os
+  os="$(uname -s)"
+
+  # Pick an install directory on PATH
+  local install_dir=""
+  if [ -d "$HOME/.local/bin" ] && [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
+    install_dir="$HOME/.local/bin"
+  elif [[ ":$PATH:" == *":/usr/local/bin:"* ]]; then
+    install_dir="/usr/local/bin"
+  elif [ "$os" = "Linux" ]; then
+    mkdir -p "$HOME/.local/bin"
+    install_dir="$HOME/.local/bin"
+    echo "Note: Created $HOME/.local/bin — add it to PATH if not already set:"
+    echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+  else
+    install_dir="/usr/local/bin"
+  fi
+
+  local symlink="$install_dir/argus"
+  local source="$PROJECT_ROOT/bin/argus"
+
+  # Remove existing symlink if it points elsewhere
+  if [ -L "$symlink" ]; then
+    local existing
+    existing="$(readlink "$symlink")"
+    if [ "$existing" = "$source" ]; then
+      echo "Symlink already correct: $symlink -> $source"
+      return 0
+    fi
+    echo "Updating existing argus symlink..."
+    rm "$symlink" 2>/dev/null || sudo rm "$symlink"
+  elif [ -e "$symlink" ]; then
+    echo "Error: $symlink already exists and is not a symlink." >&2
+    exit 1
+  fi
+
+  if [ -w "$(dirname "$symlink")" ]; then
+    ln -s "$source" "$symlink"
+  else
+    echo "Need permission to write to $(dirname "$symlink")"
+    sudo ln -s "$source" "$symlink"
+  fi
+
+  echo "Installed: $symlink -> $source"
+  echo ""
+  echo "You can now run 'argus' from anywhere."
+}
+
+cmd_remove() {
+  local source="$PROJECT_ROOT/bin/argus"
+
+  # Stop daemon if running
+  if is_running; then
+    echo "Stopping Argus daemon..."
+    cmd_stop
+  fi
+
+  # Remove symlink from known locations
+  local removed=false
+  for candidate in "$HOME/.local/bin/argus" "/usr/local/bin/argus"; do
+    if [ -L "$candidate" ]; then
+      local target
+      target="$(readlink "$candidate")"
+      if [ "$target" = "$source" ]; then
+        echo "Removing symlink: $candidate"
+        if [ -w "$(dirname "$candidate")" ]; then
+          rm "$candidate"
+        else
+          sudo rm "$candidate"
+        fi
+        removed=true
+      else
+        echo "Skipping $candidate (points to $target, not this project)"
+      fi
+    fi
+  done
+
+  if [ "$removed" = false ]; then
+    echo "No argus symlink found for this project."
+  fi
+
+  # Clean up runtime files
+  rm -f "$DATA_DIR/argus.pid" "$DATA_DIR/argus.log"
+
+  echo ""
+  echo "Argus removed."
+  echo ""
+  echo "To fully clean up, you may also want to:"
+  echo "  rm -rf $DATA_DIR  # remove session data, config, and logs"
+  if [ "$DATA_DIR_SOURCE" = "default" ]; then
+    echo "    (this is the default location — if you used ARGUS_DATA_DIR, delete that instead)"
+  fi
+  echo "  rm -rf $PROJECT_ROOT      # remove the repo itself"
+}
+
+cmd_help() {
+  echo "Usage: argus [command]"
+  echo ""
+  echo "Commands:"
+  echo "  run       Start Argus in the foreground (Ctrl+C to stop)"
+  echo "  start     Start Argus in the background (daemon mode)"
+  echo "  stop      Stop the running Argus daemon"
+  echo "  status    Show whether Argus is running"
+  echo "  logs      Tail the Argus log output"
+  echo "  update    Update to the latest tag (or a specific tag)"
+  echo "  setup     Symlink 'argus' into PATH"
+  echo "  remove    Remove symlink and stop daemon"
+  echo "  help      Show this help message"
+  echo ""
+  echo "Environment variables:"
+  echo "  ARGUS_PORT       Server port (default: 5400)"
+  echo "  ARGUS_DATA_DIR   Data directory, absolute or relative to repo root"
+  echo "                   (default: server/data)"
+  echo ""
+  echo "  Set these inline or export them in your shell profile."
+  echo "  For launchd/systemd, set them in the service definition."
+  echo ""
+  echo "Examples:"
+  echo "  argus run                                       Start in foreground"
+  echo "  argus start                                     Daemonize on default port"
+  echo "  ARGUS_PORT=5500 argus start                     Daemonize on port 5500"
+  echo "  ARGUS_PORT=5500 ARGUS_DATA_DIR=/var/argus/data argus start"
+  echo "  argus update                                    Update to latest tag"
+  echo "  argus update v0.12.0                            Update to specific tag"
+  echo ""
+  echo "Data and recovery:"
+  echo "  All session data is stored in ARGUS_DATA_DIR (sessions, config,"
+  echo "  layout). The repo itself is stateless after build. Back up your"
+  echo "  data dir; the repo can always be re-cloned and rebuilt."
+  echo ""
+}
+
+# --- Subcommand dispatch ---
+
+COMMAND="${1:-}"
+
+case "$COMMAND" in
+  run)     cmd_run ;;
+  start)   cmd_start ;;
+  stop)    cmd_stop ;;
+  status)  cmd_status ;;
+  logs)    cmd_logs ;;
+  update)  cmd_update "${2:-}" ;;
+  setup)   cmd_setup ;;
+  remove)  cmd_remove ;;
+  help|--help|-h)  cmd_help ;;
+  "")      cmd_help ;;
+  *)
+    echo "Unknown command: $COMMAND" >&2
+    echo ""
+    cmd_help
+    exit 1
+    ;;
+esac

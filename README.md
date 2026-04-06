@@ -63,6 +63,37 @@ swarm attach       # Attach to the live session (screen/tmux only)
 swarm help         # Show all commands
 ```
 
+### Production deployment
+
+For a persistent, always-on installation (e.g., served over Tailscale), use the `argus` CLI instead of `swarm`:
+
+```bash
+git clone https://github.com/antonioromano/code-orchestrator.git ~/argus
+cd ~/argus
+npm install && npm run build
+bin/argus setup     # Symlink 'argus' into PATH
+argus run           # Start in foreground, or:
+argus start         # Daemonize in background
+```
+
+Configure via environment variables:
+
+```bash
+ARGUS_PORT=5500 argus start                     # Custom port
+ARGUS_PORT=5500 ARGUS_DATA_DIR=/var/argus/data argus start  # Custom port + data dir
+```
+
+Update to the latest release:
+
+```bash
+argus update                # Latest tag
+argus update v0.12.0        # Specific tag (or downgrade)
+```
+
+All session data lives in `ARGUS_DATA_DIR` (default: `server/data/`). The repo is stateless after build — back up your data dir; the repo can always be re-cloned and rebuilt.
+
+Run `argus help` for the full command reference. See [docs/deployment.md](docs/deployment.md) for launchd (macOS) and reverse proxy setup.
+
 ### Uninstalling
 
 ```bash
@@ -214,9 +245,9 @@ Stops the running service, removes the `swarm` symlink, and cleans up runtime fi
 ```
 remote-orchestrator/
   shared/     # Shared TypeScript types (session models, REST shapes, Socket.io event maps)
-  server/     # Express + Socket.io + node-pty backend (port 5400)
+  server/     # Express + Socket.io + node-pty backend (dev :5401, prod :5400)
   client/     # React 19 + Vite + xterm.js frontend (port 5173)
-  bin/        # swarm launcher script
+  bin/        # swarm (dev) and argus (production) launcher scripts
   scripts/    # Post-install helpers (node-pty native binary fix)
   docs/       # Screenshots and planning documents
 ```
@@ -226,7 +257,7 @@ remote-orchestrator/
 ```bash
 npm install                   # Install all workspace dependencies
 npm run dev                   # Run server + client concurrently
-npm run dev -w server         # Server only (Express on :5400)
+npm run dev -w server         # Server only (Express on :5401)
 npm run dev -w client         # Client only (Vite on :5173)
 npm run build -w shared       # Build shared types (do this first)
 npm run build -w server       # Build server
@@ -234,7 +265,7 @@ npm run build -w client       # Build client
 npm run lint -w client        # Lint client
 ```
 
-Vite proxies `/api` and `/socket.io` to the server in dev mode, so the client at `:5173` talks to the server at `:5400` transparently.
+Dev mode runs the API server on port 5401 (not 5400) so it can coexist with a production instance. Vite proxies `/api` and `/socket.io` to `:5401` transparently.
 
 ### Contributing
 
@@ -259,7 +290,7 @@ When bumping the version, update it in **both** `package.json` (root) and the ve
 | **Syntax highlighting** | react-syntax-highlighter (Prism, 29 languages) |
 | **Icons** | lucide-react |
 | **Build** | npm workspaces, concurrently, TypeScript 5.7+ |
-| **Ports** | Server: 5400 · Client: 5173 (Vite proxies API/WS to server in dev) |
+| **Ports** | Production: 5400 (all-in-one) · Dev: API 5401, Vite 5173 (proxy to 5401) |
 
 ---
 

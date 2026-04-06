@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -24,16 +25,24 @@ import { setupSocketHandler } from './socket/handler.js';
 import { createAuthMiddleware } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.resolve(__dirname, '..', 'data');
+const PORT = Number(process.env.ARGUS_PORT || process.env.PORT) || 5400;
+const dataDir = (process.env.ARGUS_DATA_DIR || process.env.DATA_DIR)
+  ? path.resolve(process.env.ARGUS_DATA_DIR || process.env.DATA_DIR || '')
+  : path.resolve(__dirname, '..', 'data');
 
 const app = express();
 const httpServer = createServer(app);
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+const corsOrigins = [
+  'http://localhost:5173',
+  `http://localhost:${PORT}`,
+  ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
+];
+app.use(cors({ origin: corsOrigins }));
 app.use(express.json());
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: { origin: 'http://localhost:5173' },
+  cors: { origin: corsOrigins },
 });
 
 // Config store & agent registry
@@ -84,8 +93,20 @@ app.use('/api/update', createUpdateRoutes(updateService));
 // Socket.io
 setupSocketHandler(io, sessionManager, authService, updateService);
 
+// Production static file serving
+if (process.env.NODE_ENV === 'production') {
+  const clientDist = path.resolve(__dirname, '..', '..', 'client', 'dist');
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(clientDist, 'index.html'));
+    });
+  } else {
+    console.warn(`Warning: client/dist not found at ${clientDist} — running in API-only mode`);
+  }
+}
+
 // Start
-const PORT = 5400;
 
 let listenRetries = 0;
 httpServer.on('error', (err: NodeJS.ErrnoException) => {
