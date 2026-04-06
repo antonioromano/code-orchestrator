@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import parseDiff from 'parse-diff';
-import { GitCommit, EyeOff, WrapText } from 'lucide-react';
+import { GitCommit, EyeOff, WrapText, FolderOpen } from 'lucide-react';
 import type { GitDiffResponse, SessionInfo, GitBranchesResponse } from '@remote-orchestrator/shared';
 import { api } from '../services/api.js';
 import { DiffHunk } from './DiffHunk.js';
@@ -8,7 +8,7 @@ import { DiffFileSection } from './DiffFileSection.js';
 import { SessionSidebar } from './SessionSidebar.js';
 import { ResizeDivider } from './ResizeDivider.js';
 import { CommitBar } from './CommitBar.js';
-import { TriStateCheckbox } from './primitives/index.js';
+import { TriStateCheckbox, InlineIconLink } from './primitives/index.js';
 import { useCommitMode, fileTriState } from '../hooks/useCommitMode.js';
 import type { FileMeta, TriState } from '../hooks/useCommitMode.js';
 import { useResizablePanel } from '../hooks/useResizablePanel.js';
@@ -30,6 +30,9 @@ interface GitDiffPanelProps {
   onRefresh: () => void;
   showHeaderControls?: boolean;
   showSessionSelector?: boolean;
+  onOpenInExplorer?: (absolutePath: string) => void;
+  /** Pre-fill the search filter (e.g. when navigating from Explorer with a file selected). */
+  initialSearchQuery?: string;
 }
 
 type SectionKey = 'unstaged' | 'staged' | 'branch' | 'untracked';
@@ -62,6 +65,8 @@ export function GitDiffPanel({
   onRefresh,
   showHeaderControls = true,
   showSessionSelector = true,
+  onOpenInExplorer,
+  initialSearchQuery,
 }: GitDiffPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
@@ -87,7 +92,15 @@ export function GitDiffPanel({
     storageKey: 'gitdiff-filelist-width',
   });
   const [userSelectedKey, setUserSelectedKey] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery ?? '');
+  // Sync search when navigating from another panel with a file pre-selected
+  const prevInitialSearch = useRef(initialSearchQuery);
+  useEffect(() => {
+    if (initialSearchQuery !== undefined && initialSearchQuery !== prevInitialSearch.current) {
+      setSearchQuery(initialSearchQuery);
+    }
+    prevInitialSearch.current = initialSearchQuery;
+  }, [initialSearchQuery]);
   const [showFullKey, setShowFullKey] = useState<string | null>(null);
   const [collapseAllKey, setCollapseAllKey] = useState(0);
   const [wordWrap, setWordWrap] = useState(() => localStorage.getItem('gitdiff-word-wrap') === 'true');
@@ -112,6 +125,13 @@ export function GitDiffPanel({
   const touchStartRef = useRef(0);
 
   const folderPath = sessions.find(s => s.id === currentSessionId)?.folderPath ?? '';
+
+  // Resolve a repo-relative diff path to an absolute path and invoke the callback
+  const makeExplorerHandler = useCallback((repoRelativePath: string, isDeleted: boolean) => {
+    if (!onOpenInExplorer || !folderPath || isDeleted) return undefined;
+    const absPath = `${folderPath.replace(/\/$/, '')}/${repoRelativePath}`;
+    return () => onOpenInExplorer(absPath);
+  }, [onOpenInExplorer, folderPath]);
 
   function toggleSection(key: SectionKey) {
     setCollapsedSections(prev => {
@@ -522,6 +542,9 @@ export function GitDiffPanel({
           <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
             {fileName || 'unknown'}
           </span>
+          {onOpenInExplorer && !isDeleted && (
+            <InlineIconLink icon={FolderOpen} label="Open in Explorer" onClick={() => onOpenInExplorer(`${folderPath.replace(/\/$/, '')}/${filePath}`)} />
+          )}
           {isNew && <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 600, flexShrink: 0 }}>NEW</span>}
           {isDeleted && <span style={{ fontSize: '10px', color: 'var(--color-error)', fontWeight: 600, flexShrink: 0 }}>DELETED</span>}
           <span style={{ fontSize: '11px', display: 'flex', gap: '6px', flexShrink: 0 }}>
@@ -952,6 +975,7 @@ export function GitDiffPanel({
                         await actions.discardChunk(currentSessionId, filePath, chunkIndex, totalChanges);
                         onRefresh();
                       } : undefined}
+                      onOpenInExplorer={makeExplorerHandler(filePath, !!file.deleted)}
                     />
                   );
                 })}
@@ -960,9 +984,10 @@ export function GitDiffPanel({
             {!error && filteredStaged.length > 0 && (
               <div>
                 {sectionHeader('staged', commitModeActive ? 'Already Staged' : 'Staged Changes', filteredStaged.length, filteredUnstaged.length > 0)}
-                {!collapsedSections.has('staged') && filteredStaged.map((file, i) => (
-                  <DiffFileSection key={`staged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} wordWrap={wordWrap} />
-                ))}
+                {!collapsedSections.has('staged') && filteredStaged.map((file, i) => {
+                  const filePath = file.to === '/dev/null' ? (file.from ?? '') : (file.to ?? '');
+                  return <DiffFileSection key={`staged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} wordWrap={wordWrap} onOpenInExplorer={makeExplorerHandler(filePath, !!file.deleted)} />;
+                })}
               </div>
             )}
             {!error && filteredUntracked.length > 0 && (
@@ -983,6 +1008,7 @@ export function GitDiffPanel({
                       onToggle: () => actions.toggleFile(filePath, { filePath, hunks: [], isUntracked: true }),
                     } : undefined}
                     wordWrap={wordWrap}
+                    onOpenInExplorer={makeExplorerHandler(filePath, false)}
                   />
                 ))}
               </div>
@@ -1274,9 +1300,10 @@ interface UntrackedFileRowProps {
   isIgnoring?: boolean;
   commitModeToggle?: { isSelected: boolean; onToggle: () => void };
   wordWrap?: boolean;
+  onOpenInExplorer?: () => void;
 }
 
-function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, onIgnore, isIgnoring, commitModeToggle, wordWrap }: UntrackedFileRowProps) {
+function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, onIgnore, isIgnoring, commitModeToggle, wordWrap, onOpenInExplorer }: UntrackedFileRowProps) {
   const shortName = filePath.split('/').pop() ?? filePath;
   const [expanded, setExpanded] = useState(false);
   // null = not fetched yet, 'error' = failed/binary, string = content
@@ -1324,6 +1351,9 @@ function UntrackedFileRow({ filePath, folderPath, theme, onTrack, isTracking, on
         <span style={{ fontSize: '9px', color: 'var(--color-text-muted)', flexShrink: 0 }}>{expanded ? '▾' : '▸'}</span>
         <span style={{ fontSize: '9px', color: 'var(--color-warning)', fontWeight: 700, flexShrink: 0 }}>??</span>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{shortName}</span>
+        {onOpenInExplorer && (
+          <InlineIconLink icon={FolderOpen} label="Open in Explorer" onClick={() => onOpenInExplorer()} size={11} />
+        )}
         <button
           title={isTracking ? 'Adding…' : 'Track file (git add)'}
           onClick={e => { e.stopPropagation(); onTrack(); }}

@@ -32,7 +32,7 @@ import dockerLang from 'react-syntax-highlighter/dist/esm/languages/prism/docker
 import makefileLang from 'react-syntax-highlighter/dist/esm/languages/prism/makefile';
 import { syntaxTheme } from '../utils/syntaxTheme';
 import { langFromPath } from '../utils/langFromPath';
-import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon, PanelLeft, PanelLeftClose, Terminal as TerminalIcon } from 'lucide-react';
+import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon, PanelLeft, PanelLeftClose, Terminal as TerminalIcon, GitCommit } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
 import type { SessionInfo, FileContentResponse, FileSearchResult, GitFileStatusCode, ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { ExplorerFolderTree } from './ExplorerFolderTree.js';
@@ -40,6 +40,7 @@ import { SessionSidebar } from './SessionSidebar.js';
 import { ResizeDivider } from './ResizeDivider.js';
 import { EphemeralTerminal } from './EphemeralTerminal.js';
 import { Tooltip } from './primitives/Tooltip.js';
+import { InlineIconLink } from './primitives/InlineIconLink.js';
 import { useResizablePanel } from '../hooks/useResizablePanel.js';
 import { api } from '../services/api.js';
 
@@ -88,6 +89,7 @@ interface ExplorerPanelProps {
   socket?: TypedSocket;
   /** When true, hides SessionSidebar and uses 100% height (for Dashboard split view). */
   embedded?: boolean;
+  onOpenInDiff?: (fileName?: string) => void;
 }
 
 function FileIcon({ ext }: { ext: string }) {
@@ -224,7 +226,7 @@ function SearchResultsList({ results, isSearching, selectedFilePath, rootPath, o
   );
 }
 
-export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSessionId, initialFilePath, initialSearchQuery, onExplorerStateChange, socket, embedded }: ExplorerPanelProps) {
+export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSessionId, initialFilePath, initialSearchQuery, onExplorerStateChange, socket, embedded, onOpenInDiff }: ExplorerPanelProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [treeKey, setTreeKey] = useState(0);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(initialFilePath ?? null);
@@ -314,17 +316,21 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
     }
     const id = ++gitStatusFetchIdRef.current;
     api.getGitFileStatuses(selectedSessionId).then(response => {
-      if (gitStatusFetchIdRef.current !== id) return;
+      if (gitStatusFetchIdRef.current !== id) return; // stale
       if (!response.gitRoot) {
-        setGitStatusMap({});
+        setGitStatusMap({}); // not a git repo
         return;
       }
+      // Convert repo-relative paths to absolute, then compute folder propagation
       const absMap: Record<string, GitFileStatusCode> = {};
+      // Folder inherits the highest-priority status among its descendants: D > M/A/R/C > ?
       const priorityOrder: Record<string, number> = { 'D': 4, 'M': 3, 'A': 3, 'R': 3, 'C': 3, '?': 2 };
+      // Start propagation at gitRoot depth so we don't color /Users, /home, etc.
       const gitRootDepth = response.gitRoot.split('/').length;
       for (const [relPath, status] of Object.entries(response.statuses)) {
         const absPath = response.gitRoot + '/' + relPath;
         absMap[absPath] = status;
+        // Propagate to ancestor folders (skip ignored files, stop at gitRoot)
         if (status === '!!') continue;
         const parts = absPath.split('/');
         for (let i = gitRootDepth; i < parts.length; i++) {
@@ -763,6 +769,9 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                       <Pencil size={13} strokeWidth={1.75} />
                     </button>
                   </Tooltip>
+                  {onOpenInDiff && selectedFilePath && gitStatusMap[selectedFilePath] && gitStatusMap[selectedFilePath] !== '!!' && (
+                    <InlineIconLink icon={GitCommit} label="View in Diff" onClick={() => onOpenInDiff(selectedFilePath.split('/').pop())} />
+                  )}
                 </>
               )
             )}
@@ -1132,6 +1141,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                     onFileDoubleClick={handleFileDoubleClick}
                     selectedFilePath={selectedFilePath}
                     gitStatusMap={gitStatusMap}
+                    onOpenInDiff={onOpenInDiff}
                   />
                 )}
               </div>
@@ -1255,6 +1265,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                   onFileDoubleClick={handleFileDoubleClick}
                   selectedFilePath={selectedFilePath}
                   gitStatusMap={gitStatusMap}
+                  onOpenInDiff={onOpenInDiff}
                 />
               )}
             </div>

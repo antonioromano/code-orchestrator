@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Folder, FolderOpen, FileText, FileCode, FileJson, ChevronRight, ChevronDown } from 'lucide-react';
+import { Folder, FolderOpen, FileText, FileCode, FileJson, ChevronRight, ChevronDown, GitCommit } from 'lucide-react';
 import type { DirectoryEntry, GitFileStatusCode } from '@remote-orchestrator/shared';
+import { InlineIconLink } from './primitives/index.js';
 import { api } from '../services/api.js';
 
 interface ExplorerFolderTreeProps {
@@ -9,6 +10,7 @@ interface ExplorerFolderTreeProps {
   onFileDoubleClick?: (path: string) => void;
   selectedFilePath: string | null;
   gitStatusMap?: Record<string, GitFileStatusCode>;
+  onOpenInDiff?: (fileName?: string) => void;
 }
 
 interface TreeNode {
@@ -35,7 +37,7 @@ function getGitStatusColor(status: GitFileStatusCode | undefined): string | unde
   }
 }
 
-export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, selectedFilePath, gitStatusMap }: ExplorerFolderTreeProps) {
+export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, selectedFilePath, gitStatusMap, onOpenInDiff }: ExplorerFolderTreeProps) {
   const [treeData, setTreeData] = useState<Map<string, TreeNode>>(new Map());
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [isRootLoading, setIsRootLoading] = useState(true);
@@ -82,6 +84,56 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
 
     setExpandedPaths((prev) => new Set(prev).add(dirPath));
   }, [expandedPaths, treeData]);
+
+  // Auto-expand tree to reveal selectedFilePath (on mount or when it changes).
+  // Waits for root loading to finish before attempting to expand ancestor dirs.
+  const revealedPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedFilePath || !rootPath || isRootLoading) return;
+    if (selectedFilePath === revealedPathRef.current) return;
+    if (!selectedFilePath.startsWith(rootPath)) return;
+    revealedPathRef.current = selectedFilePath;
+
+    const relative = selectedFilePath.slice(rootPath.length).replace(/^\//, '');
+    const parts = relative.split('/');
+    parts.pop(); // drop filename — only need directories
+
+    let currentDir = rootPath;
+    const dirsToExpand: string[] = [rootPath];
+    for (const part of parts) {
+      currentDir = currentDir + '/' + part;
+      dirsToExpand.push(currentDir);
+    }
+
+    // Sequentially fetch (if needed) and expand each ancestor directory.
+    // Uses functional setTreeData to avoid stale closure reads.
+    let cancelled = false;
+    (async () => {
+      for (const dir of dirsToExpand) {
+        if (cancelled) return;
+        // Check latest treeData via a resolved promise trick — avoids stale closure
+        const alreadyLoaded = await new Promise<boolean>(resolve => {
+          setTreeData(prev => { resolve(prev.has(dir)); return prev; });
+        });
+        if (!alreadyLoaded) {
+          try {
+            const result = await api.getDirectoryChildren(dir, true);
+            if (cancelled) return;
+            setTreeData(prev => new Map(prev).set(dir, { entries: result.entries, loading: false }));
+          } catch {
+            break;
+          }
+        }
+        setExpandedPaths(prev => new Set(prev).add(dir));
+      }
+      // After expanding, scroll the selected file into view
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-filepath="${CSS.escape(selectedFilePath)}"]`);
+        el?.scrollIntoView({ block: 'nearest' });
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [selectedFilePath, rootPath, isRootLoading]);
 
   // Flatten tree into renderable rows
   const rows: { entry: DirectoryEntry; depth: number }[] = [];
@@ -137,6 +189,7 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
         const gitStatus = gitStatusMap?.[entry.path];
         const statusColor = getGitStatusColor(gitStatus);
         const isIgnored = gitStatus === '!!';
+        // Selection accent wins over status color
         const resolvedColor = isSelected
           ? 'var(--color-accent)'
           : statusColor ?? 'var(--color-text-secondary)';
@@ -148,6 +201,7 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
         return (
           <div
             key={entry.path}
+            data-filepath={entry.path}
             onClick={() => {
               if (entry.isFile) {
                 onFileSelect(entry.path, entry.ext);
@@ -211,6 +265,11 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
               {entry.name}
             </span>
+
+            {/* "View in Diff" shortcut — shown for files with actual changes (not ignored) */}
+            {entry.isFile && onOpenInDiff && gitStatus && gitStatus !== '!!' && (
+              <InlineIconLink icon={GitCommit} label="View in Diff" onClick={() => onOpenInDiff(entry.name)} size={11} opacity={0.6} />
+            )}
 
             {/* File size badge */}
             {entry.isFile && entry.size !== undefined && (

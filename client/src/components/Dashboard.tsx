@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useRef, useEffect, useState } from 'react';
 import { useResizablePanel } from '../hooks/useResizablePanel.js';
 import { ResizeDivider } from './ResizeDivider.js';
 import type { SessionInfo } from '@remote-orchestrator/shared';
@@ -89,6 +89,8 @@ function FocusedDiffWrapper({
   theme,
   onClose,
   onToggleFullscreen,
+  onOpenInExplorer,
+  initialSearchQuery,
 }: {
   sessionId: string;
   sessionStatus: string;
@@ -98,6 +100,8 @@ function FocusedDiffWrapper({
   theme: 'dark' | 'light';
   onClose: () => void;
   onToggleFullscreen: () => void;
+  onOpenInExplorer?: (absolutePath: string) => void;
+  initialSearchQuery?: string;
 }) {
   const { diff, isLoading, error, refresh } = useGitDiff({
     sessionId,
@@ -119,6 +123,8 @@ function FocusedDiffWrapper({
       onToggleFullscreen={onToggleFullscreen}
       onRefresh={refresh}
       showSessionSelector={false}
+      onOpenInExplorer={onOpenInExplorer}
+      initialSearchQuery={initialSearchQuery}
     />
   );
 }
@@ -152,6 +158,8 @@ export function Dashboard({
 }: DashboardProps) {
   const isFocused = !!focusedSessionId;
   const focusedSession = isFocused ? sessions.find((s) => s.id === focusedSessionId) : null;
+  const [embeddedDiffSearch, setEmbeddedDiffSearch] = useState('');
+  const [embeddedExplorerFile, setEmbeddedExplorerFile] = useState<string | null>(null);
 
   const { isCollapsed, collapse, uncollapse } = useCollapsedSessions();
 
@@ -631,6 +639,8 @@ export function Dashboard({
                           theme={theme}
                           onClose={() => onCloseDiff(focusedSession.id)}
                           onToggleFullscreen={() => onToggleDiffFullscreen(focusedSession.id)}
+                          onOpenInExplorer={() => onToggleExplorer(focusedSession.id)}
+                          initialSearchQuery={embeddedDiffSearch}
                         />
                       </div>
                     )}
@@ -652,6 +662,9 @@ export function Dashboard({
                           theme={theme}
                           focusedSessionId={focusedSession.id}
                           socket={socket}
+                          initialFilePath={embeddedExplorerFile}
+                          onExplorerStateChange={(state) => setEmbeddedExplorerFile(state.selectedFilePath)}
+                          onOpenInDiff={(fileName) => { setEmbeddedDiffSearch(fileName ?? ''); onToggleDiff(focusedSession.id); }}
                         />
                       </div>
                     )}
