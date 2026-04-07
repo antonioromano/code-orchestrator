@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- Resolve project root (follows symlinks, works on macOS and Linux) ---
+# ── Primitives ───────────────────────────────────────────────────────────────
+
+die()     { echo "Error: $*" >&2; exit 1; }
+warn()    { echo "Warning: $*" >&2; }
+
+# Prompt for confirmation. Returns 0 (yes) or 1 (no).
+# Skips the prompt and returns 0 if stdin is not a terminal.
+confirm() {
+  [[ -t 0 ]] || return 0
+  printf "%s [y/N] " "$1"
+  read -r answer
+  [[ "$answer" =~ ^[yY]([eE][sS])?$ ]]
+}
+
+# ── Resolve project root (follows symlinks, works on macOS and Linux) ────────
+
 resolve_project_root() {
   local source="${BASH_SOURCE[0]}"
-  while [ -L "$source" ]; do
+  while [[ -L "$source" ]]; do
     local dir
     dir="$(cd -P "$(dirname "$source")" && pwd -P)"
     source="$(readlink "$source")"
@@ -25,20 +40,15 @@ resolve_absolute_path() {
 
 PROJECT_ROOT="$(resolve_project_root)"
 
-# --- Configuration from environment ---
+# ── Configuration from environment ───────────────────────────────────────────
+
 validate_port() {
   local port="$1"
-  if ! [[ "$port" =~ ^[0-9]+$ ]]; then
-    echo "Error: ARGUS_PORT must be a number (got '$port')." >&2
-    exit 1
-  fi
-  if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
-    echo "Error: ARGUS_PORT must be between 1 and 65535 (got '$port')." >&2
-    exit 1
-  fi
+  [[ "$port" =~ ^[0-9]+$ ]]          || die "ARGUS_PORT must be a number (got '$port')."
+  (( port >= 1 && port <= 65535 ))    || die "ARGUS_PORT must be between 1 and 65535 (got '$port')."
 }
 
-if [ -n "${ARGUS_PORT:-}" ]; then
+if [[ -n "${ARGUS_PORT:-}" ]]; then
   validate_port "$ARGUS_PORT"
   PORT="$ARGUS_PORT"
   PORT_SOURCE="ARGUS_PORT"
@@ -47,7 +57,7 @@ else
   PORT_SOURCE="default"
 fi
 
-if [ -n "${ARGUS_DATA_DIR:-}" ]; then
+if [[ -n "${ARGUS_DATA_DIR:-}" ]]; then
   DATA_DIR="$(resolve_absolute_path "$PROJECT_ROOT" "$ARGUS_DATA_DIR")"
   DATA_DIR_SOURCE="ARGUS_DATA_DIR"
 else
@@ -58,46 +68,33 @@ fi
 PID_FILE="$DATA_DIR/argus.pid"
 LOG_FILE="$DATA_DIR/argus.log"
 
-# --- Node.js helpers ---
-
-get_node_version() {
-  node -v | sed 's/v//' | cut -d. -f1
-}
+# ── Node.js helpers ──────────────────────────────────────────────────────────
 
 require_node() {
-  if ! command -v node &>/dev/null; then
-    echo "Error: Node.js is not installed. Please install Node.js 18+." >&2
-    exit 1
-  fi
-  if [ "$(get_node_version)" -lt 18 ]; then
-    echo "Error: Node.js 18+ is required (found $(node -v))." >&2
-    exit 1
-  fi
+  command -v node &>/dev/null          || die "Node.js is not installed. Please install Node.js 18+."
+  local major
+  major=$(node -v | sed 's/v//' | cut -d. -f1)
+  (( major >= 18 ))                    || die "Node.js 18+ is required (found $(node -v))."
 }
 
 require_node_modules() {
-  if [ ! -d "$PROJECT_ROOT/node_modules" ]; then
-    echo "Error: node_modules not found. Run 'npm install' first." >&2
-    exit 1
-  fi
+  [[ -d "$PROJECT_ROOT/node_modules" ]] || die "node_modules not found. Run 'npm install' first."
 }
 
 check_native_modules() {
-  # Try loading node-pty to catch ABI mismatches after a Node.js upgrade
   local check
   check=$(cd "$PROJECT_ROOT" && node -e "try { require('node-pty') } catch(e) { console.log(e.message) }" 2>&1)
   if echo "$check" | grep -qi "MODULE_NOT_FOUND\|was compiled against\|NODE_MODULE_VERSION\|cannot open\|Failed to load native module"; then
-    echo "Native modules are out of date (Node.js version may have changed)."
-    echo "Rebuilding..."
+    echo "Native modules are out of date (Node.js version may have changed). Rebuilding..."
     (cd "$PROJECT_ROOT" && npm rebuild)
   fi
 }
 
 get_package_version() {
-  node -p "JSON.parse(require('fs').readFileSync('$PROJECT_ROOT/package.json','utf8')).version" 2>/dev/null || echo "unknown"
+  node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).version" "$PROJECT_ROOT/package.json" 2>/dev/null || echo "unknown"
 }
 
-# --- Preflight & build ---
+# ── Preflight & build ───────────────────────────────────────────────────────
 
 preflight() {
   require_node
@@ -107,50 +104,44 @@ preflight() {
 }
 
 ensure_built() {
-  if [ ! -f "$PROJECT_ROOT/server/dist/index.js" ]; then
+  if [[ ! -f "$PROJECT_ROOT/server/dist/index.js" ]]; then
     echo "Build output not found. Running npm run build..."
     (cd "$PROJECT_ROOT" && npm run build)
   fi
 }
 
-# --- PID management ---
-
-read_pid() {
-  if [ -f "$PID_FILE" ]; then
-    cat "$PID_FILE"
+require_port_free() {
+  if port_listening; then
+    die "Port $PORT is already in use. Choose a different ARGUS_PORT or stop the process using that port."
   fi
 }
 
-is_running() {
-  local pid
-  pid=$(read_pid)
-  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
-}
+# ── PID management ──────────────────────────────────────────────────────────
+
+read_pid()  { [[ -f "$PID_FILE" ]] && cat "$PID_FILE" || true; }
+is_running() { local pid; pid=$(read_pid); [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; }
 
 clean_stale_pid() {
-  if [ -f "$PID_FILE" ] && ! is_running; then
-    rm -f "$PID_FILE"
-  fi
+  [[ -f "$PID_FILE" ]] && ! is_running && rm -f "$PID_FILE"
+  return 0
 }
 
 wait_for_exit() {
-  local pid="$1" timeout="${2:-5}"
-  local waited=0
-  while [ $waited -lt "$timeout" ] && kill -0 "$pid" 2>/dev/null; do
+  local pid="$1" timeout="${2:-5}" waited=0
+  while (( waited < timeout )) && kill -0 "$pid" 2>/dev/null; do
     sleep 1
-    waited=$((waited + 1))
+    (( ++waited ))
   done
 }
 
 force_kill_if_alive() {
   local pid="$1"
-  if kill -0 "$pid" 2>/dev/null; then
-    echo "Process did not exit gracefully, sending SIGKILL..."
-    kill -9 "$pid" 2>/dev/null || true
-  fi
+  kill -0 "$pid" 2>/dev/null || return 0
+  echo "Process did not exit gracefully, sending SIGKILL..."
+  kill -9 "$pid" 2>/dev/null || true
 }
 
-# --- Server process ---
+# ── Server process ──────────────────────────────────────────────────────────
 
 port_listening() {
   if command -v curl &>/dev/null; then
@@ -165,29 +156,20 @@ port_listening() {
 port_held_by_pid() {
   local pid="$1"
   if command -v lsof &>/dev/null; then
-    # -sTCP:LISTEN is macOS/BSD syntax; omit on Linux where it may not be supported
     lsof -i :"$PORT" -t 2>/dev/null | grep -q "^${pid}$"
   else
-    # No lsof — fall back to process alive + port responding
     kill -0 "$pid" 2>/dev/null && port_listening
   fi
 }
 
 start_background() {
-  # Check if something is already listening on the port before we start
-  if port_listening; then
-    echo "Error: Port $PORT is already in use." >&2
-    echo "Choose a different ARGUS_PORT or stop the process using that port." >&2
-    exit 1
-  fi
+  require_port_free
 
-  # Rotate log if over 10MB
-  if [ -f "$LOG_FILE" ]; then
+  # Rotate log if over 10 MB
+  if [[ -f "$LOG_FILE" ]]; then
     local size
     size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
-    if [ "$size" -gt 10485760 ]; then
-      mv "$LOG_FILE" "${LOG_FILE}.old"
-    fi
+    (( size > 10485760 )) && mv "$LOG_FILE" "${LOG_FILE}.old"
   fi
   : > "$LOG_FILE"
 
@@ -197,33 +179,32 @@ start_background() {
   echo "$pid" > "$PID_FILE"
   disown
 
-  # Wait up to 5 seconds for our process to own the port
+  # Wait up to 5 s for our process to own the port
   local waited=0
-  while [ $waited -lt 5 ]; do
+  while (( waited < 5 )); do
     sleep 1
-    waited=$((waited + 1))
+    (( ++waited ))
     if ! kill -0 "$pid" 2>/dev/null; then
-      echo "Error: Argus failed to start. Check $LOG_FILE for details." >&2
       rm -f "$PID_FILE"
-      exit 1
+      die "Argus failed to start. Check $LOG_FILE for details."
     fi
     if port_held_by_pid "$pid"; then
-      echo ""
-      echo "Argus started (PID $pid)."
-      echo "  Dashboard: http://localhost:$PORT"
-      echo ""
-      echo "Use 'argus logs'   to see output."
-      echo "Use 'argus stop'   to shut down."
+      cat <<EOF
+
+Argus started (PID $pid).
+  Dashboard: http://localhost:$PORT
+
+Use 'argus logs'   to see output.
+Use 'argus stop'   to shut down.
+EOF
       return 0
     fi
   done
 
-  # Process is alive but not holding the port — kill it and report
-  echo "Error: Argus process started but failed to bind port $PORT." >&2
-  echo "Check $LOG_FILE for details." >&2
+  # Process is alive but not holding the port
   kill "$pid" 2>/dev/null || true
   rm -f "$PID_FILE"
-  exit 1
+  die "Argus process started but failed to bind port $PORT. Check $LOG_FILE for details."
 }
 
 print_config() {
@@ -231,10 +212,10 @@ print_config() {
   echo "  ARGUS_DATA_DIR=$DATA_DIR ($DATA_DIR_SOURCE)"
 }
 
-# --- Git helpers ---
+# ── Git helpers ─────────────────────────────────────────────────────────────
 
-fetch_tags() {
-  echo "Fetching tags..."
+fetch_remote() {
+  echo "Fetching from origin..."
   git fetch --tags origin 2>/dev/null || git fetch --tags
 }
 
@@ -242,25 +223,60 @@ get_latest_tag() {
   git tag -l 'v*' --sort=-version:refname | head -1
 }
 
+get_default_branch() {
+  # Use the remote HEAD symref (e.g., origin/master or origin/main)
+  local branch
+  branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+  [[ -n "$branch" ]] && { echo "$branch"; return 0; }
+  # Fallback: check for common names
+  for branch in master main; do
+    git rev-parse --verify "origin/$branch" &>/dev/null && { echo "$branch"; return 0; }
+  done
+  die "Could not determine default branch. Use 'argus update <branch-name>' explicitly."
+}
+
 require_tag_exists() {
   local tag="$1"
-  if ! git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
-    echo "Error: Tag '$tag' not found." >&2
-    echo "Available tags:"
-    git tag -l 'v*' --sort=-version:refname | head -10
-    exit 1
+  git rev-parse "refs/tags/$tag" >/dev/null 2>&1 && return 0
+  echo "Available tags:" >&2
+  git tag -l 'v*' --sort=-version:refname | head -10 >&2
+  die "Tag '$tag' not found."
+}
+
+# Resolve a target that could be a tag (v1.2.3) or a branch name.
+# Sets two variables in the caller: ref (what to checkout) and ref_label (for display).
+resolve_update_target() {
+  local target="$1"
+  if git rev-parse "refs/tags/$target" &>/dev/null; then
+    ref="$target"
+    ref_label="tag $target"
+  elif git rev-parse "refs/remotes/origin/$target" &>/dev/null; then
+    ref="origin/$target"
+    ref_label="branch $target ($(git rev-parse --short "origin/$target"))"
+  else
+    echo "Available tags:" >&2
+    git tag -l 'v*' --sort=-version:refname | head -10 >&2
+    die "'$target' is not a known tag or remote branch."
   fi
 }
 
 stash_if_dirty() {
-  if [ -n "$(git status --porcelain)" ]; then
-    echo "Stashing uncommitted changes..."
-    git stash --include-untracked
-    echo "  (recover later with 'git stash pop')"
-  fi
+  [[ -z "$(git status --porcelain)" ]] && return 0
+  echo "Stashing uncommitted changes..."
+  git stash --include-untracked
+  echo "  (recover later with 'git stash pop')"
 }
 
-# --- Subcommands ---
+# Returns 0 if $1 > $2 by semver (i.e., moving from $1 to $2 is a downgrade).
+# Uses numeric field sort (-t. -k1,1n ...) instead of sort -V for BSD/macOS compat.
+is_downgrade() {
+  local current="$1" target="$2"
+  local higher
+  higher=$(printf '%s\n%s\n' "$current" "$target" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+  [[ "$higher" = "$current" && "$current" != "$target" ]]
+}
+
+# ── Subcommands ─────────────────────────────────────────────────────────────
 
 cmd_start() {
   preflight
@@ -290,10 +306,12 @@ cmd_stop() {
     rm -f "$PID_FILE"
     echo "Argus stopped."
   elif port_listening; then
-    echo "Argus is running on port $PORT but not managed by 'argus start'."
-    echo "It may be managed by launchd or systemd. To stop it:"
-    echo "  macOS:  launchctl unload ~/Library/LaunchAgents/com.user.argus.plist"
-    echo "  Linux:  systemctl --user stop argus"
+    cat <<'EOF'
+Argus is running on this port but not managed by 'argus start'.
+It may be managed by launchd or systemd. To stop it:
+  macOS:  launchctl unload ~/Library/LaunchAgents/com.user.argus.plist
+  Linux:  systemctl --user stop argus
+EOF
   else
     echo "Argus is not running."
     rm -f "$PID_FILE"
@@ -305,8 +323,7 @@ cmd_status() {
 
   if is_running; then
     echo "Argus is running (PID $(read_pid))."
-    echo "  ARGUS_PORT=$PORT ($PORT_SOURCE)"
-    echo "  ARGUS_DATA_DIR=$DATA_DIR ($DATA_DIR_SOURCE)"
+    print_config
     echo "  Dashboard: http://localhost:$PORT"
   elif port_listening; then
     echo "Argus is running on port $PORT (managed externally, e.g. launchd/systemd)."
@@ -318,31 +335,22 @@ cmd_status() {
 
 find_log_file() {
   # 1. argus-managed log (from argus start)
-  if [ -f "$LOG_FILE" ]; then
-    echo "$LOG_FILE"
-    return 0
-  fi
+  [[ -f "$LOG_FILE" ]] && { echo "$LOG_FILE"; return 0; }
 
   # 2. Ask launchd where it writes logs (macOS)
   if command -v launchctl &>/dev/null; then
     local plist_log
     plist_log=$(launchctl dumpstate 2>/dev/null | grep -A20 'com.user.argus' | grep -i 'stdout' | head -1 | sed 's/.*= //' | tr -d ' "' || true)
-    if [ -n "$plist_log" ] && [ -f "$plist_log" ]; then
-      echo "$plist_log"
-      return 0
-    fi
-    # Fallback: check the plist file directly
+    [[ -n "$plist_log" && -f "$plist_log" ]] && { echo "$plist_log"; return 0; }
+
     local plist_path="$HOME/Library/LaunchAgents/com.user.argus.plist"
-    if [ -f "$plist_path" ]; then
+    if [[ -f "$plist_path" ]]; then
       plist_log=$(/usr/libexec/PlistBuddy -c "Print :StandardOutPath" "$plist_path" 2>/dev/null || true)
-      if [ -n "$plist_log" ] && [ -f "$plist_log" ]; then
-        echo "$plist_log"
-        return 0
-      fi
+      [[ -n "$plist_log" && -f "$plist_log" ]] && { echo "$plist_log"; return 0; }
     fi
   fi
 
-  # 3. systemd journal (Linux) — can't return a file, but signal the caller
+  # 3. systemd journal (Linux)
   if command -v journalctl &>/dev/null && systemctl --user is-active argus &>/dev/null 2>&1; then
     echo "journalctl"
     return 0
@@ -355,19 +363,17 @@ cmd_logs() {
   local log
   log=$(find_log_file) || true
 
-  if [ "$log" = "journalctl" ]; then
+  if [[ "$log" = "journalctl" ]]; then
     echo "Argus is managed by systemd. Tailing journal..."
     echo ""
     exec journalctl --user -u argus -f
   fi
 
-  if [ -z "$log" ]; then
-    echo "No log file found." >&2
-    echo "  Checked: $LOG_FILE" >&2
-    echo ""
-    echo "If running via systemd, use: journalctl --user -u argus -f" >&2
-    exit 1
+  if [[ -z "$log" ]]; then
+    die "No log file found. Checked: $LOG_FILE
+If running via systemd, use: journalctl --user -u argus -f"
   fi
+
   echo "Tailing $log (Ctrl+C to stop)..."
   echo ""
   tail -f "$log"
@@ -376,14 +382,9 @@ cmd_logs() {
 cmd_run() {
   preflight
   ensure_built
+  require_port_free
 
-  if port_listening; then
-    echo "Error: Port $PORT is already in use." >&2
-    echo "Choose a different ARGUS_PORT or stop the process using that port." >&2
-    exit 1
-  fi
-
-  if [ -t 1 ]; then
+  if [[ -t 1 ]]; then
     echo "Starting Argus (Ctrl+C to stop)..."
   else
     echo "Starting Argus..."
@@ -396,30 +397,75 @@ cmd_run() {
 }
 
 cmd_update() {
-  local target_tag="$1"
+  local target="" force=false skip_confirm=false head=false
+
+  for arg in "$@"; do
+    case "$arg" in
+      --force|-f) force=true ;;
+      --yes|-y)   skip_confirm=true ;;
+      --head)     head=true ;;
+      -*)         die "Unknown flag: $arg" ;;
+      *)          target="$arg" ;;
+    esac
+  done
 
   cd "$PROJECT_ROOT"
-  fetch_tags
+  fetch_remote
 
-  if [ -z "$target_tag" ]; then
-    target_tag=$(get_latest_tag)
-    if [ -z "$target_tag" ]; then
-      echo "Error: No version tags found in remote." >&2
-      exit 1
-    fi
-    echo "Latest tag: $target_tag"
+  # Determine what we're updating to
+  local ref="" ref_label=""
+  if [[ "$head" = true ]]; then
+    [[ -z "$target" ]] && target="$(get_default_branch)"
+    ref="origin/$target"
+    ref_label="branch $target ($(git rev-parse --short "origin/$target"))"
+  elif [[ -z "$target" ]]; then
+    target=$(get_latest_tag)
+    [[ -n "$target" ]] || die "No version tags found in remote."
+    ref="$target"
+    ref_label="tag $target"
   else
-    require_tag_exists "$target_tag"
+    resolve_update_target "$target"
   fi
 
-  echo "Current version: $(get_package_version)"
-  echo "Target version:  $target_tag"
+  local current_version
+  current_version="$(get_package_version)"
+
+  echo "Current version: $current_version"
+  echo "Target:          $ref_label"
   echo ""
+
+  # Version comparison only applies to tag targets (semver)
+  if [[ "$ref" != origin/* ]]; then
+    local target_version="${target#v}"
+
+    if [[ "$current_version" = "$target_version" ]]; then
+      echo "Already on version $current_version. Nothing to do."
+      exit 0
+    fi
+
+    if is_downgrade "$current_version" "$target_version"; then
+      if [[ "$force" = false ]]; then
+        die "This would DOWNGRADE from $current_version to $target_version.
+Use 'argus update $target --force' to downgrade anyway."
+      fi
+      warn "Downgrading from $current_version to $target_version."
+    fi
+  fi
+
+  if [[ "$skip_confirm" = false ]]; then
+    confirm "Proceed with update to ${ref_label}?" || { echo "Update cancelled."; exit 0; }
+  fi
 
   stash_if_dirty
 
-  echo "Checking out $target_tag..."
-  git checkout "$target_tag"
+  echo "Checking out $ref..."
+  if [[ "$ref" == origin/* ]]; then
+    # Create/update a local branch tracking the remote, avoid detached HEAD
+    local local_branch="${ref#origin/}"
+    git checkout -B "$local_branch" "$ref"
+  else
+    git checkout "$ref"
+  fi
 
   echo "Installing dependencies..."
   npm install
@@ -428,7 +474,7 @@ cmd_update() {
   npm run build
 
   echo ""
-  echo "Update complete: $target_tag"
+  echo "Update complete: $ref_label"
 
   if is_running; then
     echo ""
@@ -446,11 +492,11 @@ cmd_setup() {
 
   # Pick an install directory on PATH
   local install_dir=""
-  if [ -d "$HOME/.local/bin" ] && [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
+  if [[ -d "$HOME/.local/bin" && ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
     install_dir="$HOME/.local/bin"
   elif [[ ":$PATH:" == *":/usr/local/bin:"* ]]; then
     install_dir="/usr/local/bin"
-  elif [ "$os" = "Linux" ]; then
+  elif [[ "$os" = "Linux" ]]; then
     mkdir -p "$HOME/.local/bin"
     install_dir="$HOME/.local/bin"
     echo "Note: Created $HOME/.local/bin — add it to PATH if not already set:"
@@ -462,22 +508,21 @@ cmd_setup() {
   local symlink="$install_dir/argus"
   local source="$PROJECT_ROOT/bin/argus"
 
-  # Remove existing symlink if it points elsewhere
-  if [ -L "$symlink" ]; then
+  # Already correct?
+  if [[ -L "$symlink" ]]; then
     local existing
     existing="$(readlink "$symlink")"
-    if [ "$existing" = "$source" ]; then
+    if [[ "$existing" = "$source" ]]; then
       echo "Symlink already correct: $symlink -> $source"
       return 0
     fi
     echo "Updating existing argus symlink..."
     rm "$symlink" 2>/dev/null || sudo rm "$symlink"
-  elif [ -e "$symlink" ]; then
-    echo "Error: $symlink already exists and is not a symlink." >&2
-    exit 1
+  elif [[ -e "$symlink" ]]; then
+    die "$symlink already exists and is not a symlink."
   fi
 
-  if [ -w "$(dirname "$symlink")" ]; then
+  if [[ -w "$(dirname "$symlink")" ]]; then
     ln -s "$source" "$symlink"
   else
     echo "Need permission to write to $(dirname "$symlink")"
@@ -492,106 +537,99 @@ cmd_setup() {
 cmd_remove() {
   local source="$PROJECT_ROOT/bin/argus"
 
-  # Stop daemon if running
-  if is_running; then
-    echo "Stopping Argus daemon..."
-    cmd_stop
-  fi
+  is_running && { echo "Stopping Argus daemon..."; cmd_stop; }
 
   # Remove symlink from known locations
   local removed=false
   for candidate in "$HOME/.local/bin/argus" "/usr/local/bin/argus"; do
-    if [ -L "$candidate" ]; then
-      local target
-      target="$(readlink "$candidate")"
-      if [ "$target" = "$source" ]; then
-        echo "Removing symlink: $candidate"
-        if [ -w "$(dirname "$candidate")" ]; then
-          rm "$candidate"
-        else
-          sudo rm "$candidate"
-        fi
-        removed=true
-      else
-        echo "Skipping $candidate (points to $target, not this project)"
-      fi
+    [[ -L "$candidate" ]] || continue
+    local target
+    target="$(readlink "$candidate")"
+    if [[ "$target" != "$source" ]]; then
+      echo "Skipping $candidate (points to $target, not this project)"
+      continue
     fi
+    echo "Removing symlink: $candidate"
+    if [[ -w "$(dirname "$candidate")" ]]; then
+      rm "$candidate"
+    else
+      sudo rm "$candidate"
+    fi
+    removed=true
   done
 
-  if [ "$removed" = false ]; then
-    echo "No argus symlink found for this project."
-  fi
+  [[ "$removed" = true ]] || echo "No argus symlink found for this project."
 
-  # Clean up runtime files
   rm -f "$DATA_DIR/argus.pid" "$DATA_DIR/argus.log"
 
-  echo ""
-  echo "Argus removed."
-  echo ""
-  echo "To fully clean up, you may also want to:"
-  echo "  rm -rf $DATA_DIR  # remove session data, config, and logs"
-  if [ "$DATA_DIR_SOURCE" = "default" ]; then
+  cat <<EOF
+
+Argus removed.
+
+To fully clean up, you may also want to:
+  rm -rf $DATA_DIR  # remove session data, config, and logs
+EOF
+  [[ "$DATA_DIR_SOURCE" = "default" ]] && \
     echo "    (this is the default location — if you used ARGUS_DATA_DIR, delete that instead)"
-  fi
   echo "  rm -rf $PROJECT_ROOT      # remove the repo itself"
 }
 
 cmd_help() {
-  echo "Usage: argus [command]"
-  echo ""
-  echo "Commands:"
-  echo "  run       Start Argus in the foreground (Ctrl+C to stop)"
-  echo "  start     Start Argus in the background (daemon mode)"
-  echo "  stop      Stop the running Argus daemon"
-  echo "  status    Show whether Argus is running"
-  echo "  logs      Tail the Argus log output"
-  echo "  update    Update to the latest tag (or a specific tag)"
-  echo "  setup     Symlink 'argus' into PATH"
-  echo "  remove    Remove symlink and stop daemon"
-  echo "  help      Show this help message"
-  echo ""
-  echo "Environment variables:"
-  echo "  ARGUS_PORT       Server port (default: 5400)"
-  echo "  ARGUS_DATA_DIR   Data directory, absolute or relative to repo root"
-  echo "                   (default: server/data)"
-  echo ""
-  echo "  Set these inline or export them in your shell profile."
-  echo "  For launchd/systemd, set them in the service definition."
-  echo ""
-  echo "Examples:"
-  echo "  argus run                                       Start in foreground"
-  echo "  argus start                                     Daemonize on default port"
-  echo "  ARGUS_PORT=5500 argus start                     Daemonize on port 5500"
-  echo "  ARGUS_PORT=5500 ARGUS_DATA_DIR=/var/argus/data argus start"
-  echo "  argus update                                    Update to latest tag"
-  echo "  argus update v0.12.0                            Update to specific tag"
-  echo ""
-  echo "Data and recovery:"
-  echo "  All session data is stored in ARGUS_DATA_DIR (sessions, config,"
-  echo "  layout). The repo itself is stateless after build. Back up your"
-  echo "  data dir; the repo can always be re-cloned and rebuilt."
-  echo ""
+  cat <<EOF
+Usage: argus [command]
+
+Commands:
+  run       Start Argus in the foreground (Ctrl+C to stop)
+  start     Start Argus in the background (daemon mode)
+  stop      Stop the running Argus daemon
+  status    Show whether Argus is running
+  logs      Tail the Argus log output
+  update    Update to the latest tag, a specific tag, or branch head
+  setup     Symlink 'argus' into PATH
+  remove    Remove symlink and stop daemon
+  help      Show this help message
+
+Environment variables:
+  ARGUS_PORT       Server port (default: 5400)
+  ARGUS_DATA_DIR   Data directory, absolute or relative to repo root
+                   (default: server/data)
+
+  Set these inline or export them in your shell profile.
+  For launchd/systemd, set them in the service definition.
+
+Examples:
+  argus run                                       Start in foreground
+  argus start                                     Daemonize on default port
+  ARGUS_PORT=5500 argus start                     Daemonize on port 5500
+  ARGUS_PORT=5500 ARGUS_DATA_DIR=/var/argus/data argus start
+  argus update                                    Update to latest tag (with confirmation)
+  argus update v0.12.0                            Update to specific tag
+  argus update --head                             Update to tip of default branch (master/main)
+  argus update --head some-branch                 Update to tip of a specific branch
+  argus update -y                                 Update without confirmation prompt
+  argus update v0.10.0 --force                    Downgrade to an older version
+
+Data and recovery:
+  All session data is stored in ARGUS_DATA_DIR (sessions, config,
+  layout). The repo itself is stateless after build. Back up your
+  data dir; the repo can always be re-cloned and rebuilt.
+EOF
 }
 
-# --- Subcommand dispatch ---
+# ── Dispatch ────────────────────────────────────────────────────────────────
 
 COMMAND="${1:-}"
 
 case "$COMMAND" in
-  run)     cmd_run ;;
-  start)   cmd_start ;;
-  stop)    cmd_stop ;;
-  status)  cmd_status ;;
-  logs)    cmd_logs ;;
-  update)  cmd_update "${2:-}" ;;
-  setup)   cmd_setup ;;
-  remove)  cmd_remove ;;
-  help|--help|-h)  cmd_help ;;
-  "")      cmd_help ;;
-  *)
-    echo "Unknown command: $COMMAND" >&2
-    echo ""
-    cmd_help
-    exit 1
-    ;;
+  run)              cmd_run ;;
+  start)            cmd_start ;;
+  stop)             cmd_stop ;;
+  status)           cmd_status ;;
+  logs)             cmd_logs ;;
+  update)           shift; cmd_update "$@" ;;
+  setup)            cmd_setup ;;
+  remove)           cmd_remove ;;
+  help|--help|-h)   cmd_help ;;
+  "")               cmd_help ;;
+  *)                die "Unknown command: $COMMAND" ;;
 esac

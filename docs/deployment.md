@@ -15,16 +15,20 @@ argus run           # Verify it starts, then Ctrl+C
 ## argus CLI reference
 
 ```
-argus run           Start in foreground (Ctrl+C to stop)
-argus start         Daemonize in background (PID file + log)
-argus stop          Stop the daemon
-argus status        Show running state
-argus logs          Tail the log file
-argus update        Update to the latest tag, rebuild, and restart
-argus update vX.Y.Z Update to a specific tag
-argus setup         Symlink argus into PATH
-argus remove        Remove symlink, stop daemon, show cleanup instructions
-argus help          Full reference
+argus run                       Start in foreground (Ctrl+C to stop)
+argus start                     Daemonize in background (PID file + log)
+argus stop                      Stop the daemon
+argus status                    Show running state
+argus logs                      Tail the log file
+argus update                    Update to latest tag (prompts for confirmation)
+argus update vX.Y.Z             Update to a specific tag
+argus update --head             Update to tip of default branch (master/main)
+argus update --head <branch>    Update to tip of a specific branch
+argus update -y                 Skip confirmation prompt
+argus update vX.Y.Z --force     Downgrade to an older version
+argus setup                     Symlink argus into PATH
+argus remove                    Remove symlink, stop daemon, show cleanup instructions
+argus help                      Full reference
 ```
 
 ### Environment variables
@@ -78,11 +82,9 @@ Create a plist at `~/Library/LaunchAgents/com.user.argus.plist`:
     <string>com.user.argus</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/YOU/argus/bin/argus</string>
+        <string>/Users/YOU/.local/bin/argus</string>
         <string>run</string>
     </array>
-    <key>WorkingDirectory</key>
-    <string>/Users/YOU/argus</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -102,7 +104,7 @@ Create a plist at `~/Library/LaunchAgents/com.user.argus.plist`:
 </plist>
 ```
 
-Replace `/Users/YOU/argus` with your clone path. Adjust the `PATH` to include wherever `node` and `npm` live on your system (asdf shims, Homebrew, nvm, system Node, etc.).
+Run `argus setup` first to create the symlink at `~/.local/bin/argus` (or `/usr/local/bin/argus`). The plist uses the symlink path so it survives if you move the repo. Adjust the `PATH` to include wherever `node` and `npm` live on your system (asdf shims, Homebrew, nvm, system Node, etc.). No `WorkingDirectory` is needed — the script resolves the project root by following the symlink.
 
 Load and manage:
 
@@ -130,10 +132,9 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/YOU/argus
 Environment=PATH=/home/YOU/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=ARGUS_PORT=5400
-ExecStart=/home/YOU/argus/bin/argus run
+ExecStart=/home/YOU/.local/bin/argus run
 Restart=always
 RestartSec=3
 
@@ -190,16 +191,22 @@ This makes Argus available at `https://your-machine.tailnet-name.ts.net/argus` w
 ## Updating
 
 ```bash
-argus update              # Fetch latest tag, rebuild
-argus update v0.12.0      # Specific version (or downgrade)
+argus update                  # Latest tag (prompts for confirmation)
+argus update v0.12.0          # Specific tag
+argus update --head           # Tip of default branch (master/main)
+argus update --head feature   # Tip of a specific branch
+argus update -y               # Skip confirmation
+argus update v0.9.0 --force   # Downgrade (blocked by default)
 ```
 
 The update command:
-1. Fetches tags from the remote
-2. Stashes uncommitted changes (if any)
-3. Checks out the target tag
-4. Runs `npm install` and `npm run build`
-5. Restarts the daemon if it was running via `argus start`
+1. Fetches tags and branches from the remote
+2. Compares current vs target version — exits early if already current, blocks downgrades unless `--force` is passed
+3. Prompts for confirmation (skip with `-y`, auto-skipped in non-interactive contexts)
+4. Stashes uncommitted changes (if any)
+5. Checks out the target (tag targets detach HEAD; branch targets create/update a local tracking branch)
+6. Runs `npm install` and `npm run build`
+7. Restarts the daemon if it was running via `argus start`
 
 If running under launchd/systemd with auto-restart, the service manager handles the restart automatically.
 
