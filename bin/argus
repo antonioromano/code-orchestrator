@@ -150,6 +150,36 @@ force_kill_if_alive() {
   fi
 }
 
+kill_port_holder() {
+  local pids
+  pids=$(lsof -i :"$PORT" -t 2>/dev/null || true)
+  if [ -z "$pids" ]; then
+    echo "No process found on port $PORT."
+    return 0
+  fi
+  echo "Killing process(es) on port $PORT: $pids"
+  echo "$pids" | xargs kill 2>/dev/null || true
+  # Wait briefly for graceful exit
+  local waited=0
+  while [ $waited -lt 3 ]; do
+    sleep 1
+    waited=$((waited + 1))
+    local remaining
+    remaining=$(lsof -i :"$PORT" -t 2>/dev/null || true)
+    if [ -z "$remaining" ]; then
+      return 0
+    fi
+  done
+  # Force kill any remaining
+  local remaining
+  remaining=$(lsof -i :"$PORT" -t 2>/dev/null || true)
+  if [ -n "$remaining" ]; then
+    echo "Force-killing remaining process(es): $remaining"
+    echo "$remaining" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
+}
+
 # --- Server process ---
 
 port_listening() {
@@ -177,7 +207,7 @@ start_background() {
   # Check if something is already listening on the port before we start
   if port_listening; then
     echo "Error: Port $PORT is already in use." >&2
-    echo "Choose a different ARGUS_PORT or stop the process using that port." >&2
+    echo "Use --force to kill the existing process, or choose a different ARGUS_PORT." >&2
     exit 1
   fi
 
@@ -263,13 +293,28 @@ stash_if_dirty() {
 # --- Subcommands ---
 
 cmd_start() {
+  local force=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force|-f) force=true; shift ;;
+      *) echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+  done
+
   preflight
   ensure_built
   clean_stale_pid
 
   if is_running; then
-    echo "Argus is already running (PID $(read_pid)) on port $PORT."
-    exit 0
+    if [ "$force" = true ]; then
+      echo "Stopping existing Argus (PID $(read_pid))..."
+      cmd_stop
+    else
+      echo "Argus is already running (PID $(read_pid)) on port $PORT."
+      exit 0
+    fi
+  elif port_listening && [ "$force" = true ]; then
+    kill_port_holder
   fi
 
   echo "Starting Argus in background..."
@@ -374,13 +419,25 @@ cmd_logs() {
 }
 
 cmd_run() {
+  local force=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force|-f) force=true; shift ;;
+      *) echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+  done
+
   preflight
   ensure_built
 
   if port_listening; then
-    echo "Error: Port $PORT is already in use." >&2
-    echo "Choose a different ARGUS_PORT or stop the process using that port." >&2
-    exit 1
+    if [ "$force" = true ]; then
+      kill_port_holder
+    else
+      echo "Error: Port $PORT is already in use." >&2
+      echo "Use --force to kill the existing process, or choose a different ARGUS_PORT." >&2
+      exit 1
+    fi
   fi
 
   if [ -t 1 ]; then
@@ -542,6 +599,9 @@ cmd_help() {
   echo "Commands:"
   echo "  run       Start Argus in the foreground (Ctrl+C to stop)"
   echo "  start     Start Argus in the background (daemon mode)"
+  echo ""
+  echo "  Both 'run' and 'start' accept --force (-f) to kill any existing"
+  echo "  process on the port before starting."
   echo "  stop      Stop the running Argus daemon"
   echo "  status    Show whether Argus is running"
   echo "  logs      Tail the Argus log output"
@@ -578,8 +638,8 @@ cmd_help() {
 COMMAND="${1:-}"
 
 case "$COMMAND" in
-  run)     cmd_run ;;
-  start)   cmd_start ;;
+  run)     shift; cmd_run "$@" ;;
+  start)   shift; cmd_start "$@" ;;
   stop)    cmd_stop ;;
   status)  cmd_status ;;
   logs)    cmd_logs ;;

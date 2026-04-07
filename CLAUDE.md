@@ -61,6 +61,25 @@ Client ←(REST)→ Server for CRUD. Client ←(Socket.io rooms)→ Server for r
 
 When bumping the version, update it in **both** `package.json` (root) and the version badge in `README.md` (the shield.io badge URL on line 3 contains the version string: `![Version](https://img.shields.io/badge/version-X.Y.Z-blue)`).
 
+### How to release a new version
+
+```bash
+# 1. Update version in both files:
+#    - package.json  →  "version": "X.Y.Z"
+#    - README.md     →  version-X.Y.Z-blue (in the badge URL)
+
+# 2. Commit and tag
+git add package.json README.md
+git commit -m "bump version to X.Y.Z"
+git tag vX.Y.Z
+
+# 3. Push commit and tag
+git push origin master
+git push origin vX.Y.Z
+```
+
+Users update via `argus update`, which fetches the latest tag and checks it out. The version displayed in the UI comes from `package.json`, so it **must** match the tag.
+
 ## Key Details
 
 - Server port: **5400**, Client port: **5173** (Vite dev server proxies API/WS to server)
