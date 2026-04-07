@@ -711,6 +711,7 @@ function AppInner() {
           onClose={() => setShowSettingsModal(false)}
           onSave={updateConfig}
           theme={theme}
+          version={updateStatus?.currentVersion}
         />
       )}
 

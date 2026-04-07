@@ -66,14 +66,20 @@ const DEFAULT_PROMPT_PATTERNS: RegExp[] = [
 export class StateDetector {
   private buffer = '';
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private runningTimer: ReturnType<typeof setTimeout> | null = null;
+  private feedCount = 0;
   private currentStatus: SessionStatus = 'running';
+  private pendingStatus: SessionStatus | null = null;
   private onStatusChange: (status: SessionStatus) => void;
   private idleDelayMs: number;
+  private debounceMs: number;
   private promptPatterns: RegExp[];
 
-  constructor(onStatusChange: (status: SessionStatus) => void, agentType: string = 'claude', idleDelayMs = 500) {
+  constructor(onStatusChange: (status: SessionStatus) => void, agentType: string = 'claude', idleDelayMs = 800) {
     this.onStatusChange = onStatusChange;
     this.idleDelayMs = idleDelayMs;
+    this.debounceMs = 300;
     this.promptPatterns = AGENT_PROMPT_PATTERNS[agentType] ?? DEFAULT_PROMPT_PATTERNS;
   }
 
@@ -97,23 +103,35 @@ export class StateDetector {
     // Reset idle timer
     if (this.idleTimer) clearTimeout(this.idleTimer);
 
-    // Check for prompt patterns immediately — handles cases where periodic output
-    // (e.g. Claude Code's status bar re-rendering every second) prevents the idle
-    // timer from ever firing, keeping the status stuck as 'running'.
-    // Use 1500 chars: frequent small status bar updates accumulate and push the
-    // actual prompt text beyond a 500-char window within seconds.
+    // Only check for prompt patterns here — never set 'running' directly from
+    // feed(). Periodic re-renders (status bar, resize redraws) produce small
+    // output bursts that don't mean the agent is actively working. Instead,
+    // 'running' is set only after sustained output (see runningTimer below).
     const tail = this.buffer.slice(-1500).trim();
     const matched = this.promptPatterns.some(p => p.test(tail));
     if (process.env['DEBUG_STATE']) {
       console.log(`[StateDetector] matched=${matched} tail(last200)=${JSON.stringify(tail.slice(-200))}`);
     }
     if (matched) {
-      this.updateStatus('waiting');
-    } else {
-      this.updateStatus('running');
+      this.scheduleStatus('waiting');
     }
 
-    // Also check after output settles as a fallback
+    // Track sustained output — only transition to 'running' if we receive
+    // multiple feed() calls within a short window, indicating real activity
+    // rather than a one-off re-render.
+    this.feedCount++;
+    if (this.runningTimer) clearTimeout(this.runningTimer);
+    this.runningTimer = setTimeout(() => {
+      // If we got several feed() calls in quick succession and no prompt
+      // was matched, that's real output → mark as running.
+      if (this.feedCount >= 3 && !matched) {
+        this.scheduleStatus('running');
+      }
+      this.feedCount = 0;
+      this.runningTimer = null;
+    }, 150);
+
+    // Check after output settles for idle/waiting detection
     this.idleTimer = setTimeout(() => {
       this.checkForPrompt();
     }, this.idleDelayMs);
@@ -124,16 +142,45 @@ export class StateDetector {
 
     for (const pattern of this.promptPatterns) {
       if (pattern.test(tail)) {
-        this.updateStatus('waiting');
+        this.scheduleStatus('waiting');
         return;
       }
     }
 
-    // Output stopped but no prompt detected — idle/done
-    this.updateStatus('idle');
+    // Output stopped but no prompt detected — idle/done.
+    // Goes through debounce so that a brief pause followed by more output
+    // (e.g. startup renders, status bar repaints) doesn't flicker to idle.
+    this.scheduleStatus('idle');
   }
 
+  /**
+   * Debounced status scheduling — prevents rapid flickering by requiring the
+   * desired status to remain consistent for `debounceMs` before emitting.
+   */
+  private scheduleStatus(status: SessionStatus): void {
+    // If this is already what we'd emit, nothing to do
+    if (status === this.currentStatus && this.pendingStatus === null) return;
+
+    // If the pending status is the same, let the existing timer run
+    if (status === this.pendingStatus) return;
+
+    this.pendingStatus = status;
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      if (this.pendingStatus !== null && this.pendingStatus !== this.currentStatus) {
+        this.currentStatus = this.pendingStatus;
+        this.onStatusChange(this.currentStatus);
+      }
+      this.pendingStatus = null;
+    }, this.debounceMs);
+  }
+
+  /** Immediate status update — bypasses debounce (used for exited, idle from timer). */
   private updateStatus(status: SessionStatus): void {
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.pendingStatus = null;
     if (status !== this.currentStatus) {
       this.currentStatus = status;
       this.onStatusChange(status);
@@ -151,5 +198,7 @@ export class StateDetector {
 
   destroy(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    if (this.runningTimer) clearTimeout(this.runningTimer);
   }
 }

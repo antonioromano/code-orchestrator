@@ -11,6 +11,7 @@ interface SettingsModalProps {
   onClose: () => void;
   onSave: (config: Partial<AppConfig>) => Promise<AppConfig | void>;
   theme: 'dark' | 'light';
+  version?: string;
 }
 
 function agentAbbrev(agent: AgentDefinition): string {
@@ -18,7 +19,7 @@ function agentAbbrev(agent: AgentDefinition): string {
   return abbrevs[agent.id] || agent.name.slice(0, 3);
 }
 
-export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
+export function SettingsModal({ config, onClose, onSave, version }: SettingsModalProps) {
   const [defaultAgent, setDefaultAgent] = useState(config.defaultAgent);
   const [customAgents, setCustomAgents] = useState<AgentDefinition[]>(config.customAgents);
   const [agentFlags, setAgentFlags] = useState<Record<string, AgentFlag[]>>(config.agentFlags || {});
@@ -463,6 +464,19 @@ export function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
             </div>
           )}
         </section>
+      )}
+
+      {version && (
+        <div style={{
+          fontSize: 'var(--text-sm)',
+          color: 'var(--color-text-muted)',
+          textAlign: 'center',
+          paddingTop: 'var(--space-4)',
+          borderTop: '1px solid var(--color-border-subtle)',
+          marginBottom: 'var(--space-4)',
+        }}>
+          Argus v{version}
+        </div>
       )}
 
       {error && (
