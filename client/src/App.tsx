@@ -19,6 +19,8 @@ import { SettingsModal } from './components/SettingsModal.js';
 import { PasswordGate } from './components/PasswordGate.js';
 import { GitDiffPanel } from './components/GitDiffPanel.js';
 import { ExplorerPanel } from './components/ExplorerPanel.js';
+import { EphemeralTerminal } from './components/EphemeralTerminal.js';
+import type { TreeNode } from './components/ExplorerFolderTree.js';
 import type { AppTab } from './components/NavTabs.js';
 import { MobileBottomNav } from './components/MobileBottomNav.js';
 import { api, setToken } from './services/api.js';
@@ -136,6 +138,62 @@ function AppInner() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const { config, updateConfig } = useConfig();
   const { getOrderedSessions, reorder } = useSessionOrder();
+
+  // --- Folder state persistence caches (plain objects survive tab switches without triggering re-renders) ---
+  // Using useState with lazy initializer to get a stable mutable Map that persists across renders.
+  // These are intentionally mutated in-place (like refs) but passed as values to avoid lint warnings.
+  type SectionKey = 'unstaged' | 'staged' | 'branch' | 'untracked';
+  const [treeExpandedPathsCache] = useState(() => new Map<string, Set<string>>());
+  const [treeDataCache] = useState(() => new Map<string, Map<string, TreeNode>>());
+  const [diffCollapsedSectionsCache] = useState(() => new Map<string, Set<SectionKey>>());
+
+  const handleTreeExpandedPathsChange = useCallback((sessionId: string, paths: Set<string>) => {
+    treeExpandedPathsCache.set(sessionId, paths);
+  }, [treeExpandedPathsCache]);
+  const handleTreeDataChange = useCallback((sessionId: string, data: Map<string, TreeNode>) => {
+    treeDataCache.set(sessionId, data);
+  }, [treeDataCache]);
+  const handleDiffCollapsedSectionsChange = useCallback((sessionId: string, sections: Set<SectionKey>) => {
+    diffCollapsedSectionsCache.set(sessionId, sections);
+  }, [diffCollapsedSectionsCache]);
+
+  // --- Shared terminal state ---
+  const SHARED_TERMINAL_HEIGHT = 200;
+  const [sharedTerminalOpen, setSharedTerminalOpen] = useState(false);
+  // Track session IDs that have had a terminal spawned (kept alive across session switches)
+  const [spawnedTerminalSessions, setSpawnedTerminalSessions] = useState<Set<string>>(new Set());
+  const toggleSharedTerminal = useCallback(() => setSharedTerminalOpen(prev => !prev), []);
+
+  // Register the active session's terminal when opened
+  useEffect(() => {
+    if (!sharedTerminalOpen) return;
+    const sid = focusedSessionId ?? sessions[0]?.id;
+    if (!sid) return;
+    setSpawnedTerminalSessions(prev => {
+      if (prev.has(sid)) return prev;
+      const next = new Set(prev);
+      next.add(sid);
+      return next;
+    });
+  }, [sharedTerminalOpen, focusedSessionId, sessions]);
+
+  // Clean up spawned terminals for deleted sessions
+  useEffect(() => {
+    const liveIds = new Set(sessions.map(s => s.id));
+    setSpawnedTerminalSessions(prev => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (liveIds.has(id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [sessions]);
+
+  // Set CSS variable for terminal height offset so tab panels can account for it
+  useEffect(() => {
+    const isTerminalVisible = sharedTerminalOpen && (activeTab === 'explorer' || activeTab === 'git-diff');
+    document.documentElement.style.setProperty('--shared-terminal-height', isTerminalVisible ? `${SHARED_TERMINAL_HEIGHT}px` : '0px');
+  }, [sharedTerminalOpen, activeTab]);
 
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
@@ -639,6 +697,10 @@ function AppInner() {
                 onSelectSession={setFocusedSessionId}
                 onOpenInExplorer={handleOpenFileInExplorer}
                 initialSearchQuery={diffSearchQuery}
+                diffCollapsedSectionsCache={diffCollapsedSectionsCache}
+                onCollapsedSectionsChange={handleDiffCollapsedSectionsChange}
+                showTerminal={sharedTerminalOpen}
+                onToggleTerminal={toggleSharedTerminal}
               />
             </ErrorBoundary>
           ) : (
@@ -646,7 +708,7 @@ function AppInner() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              height: `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
+              height: `calc(100vh - var(--header-height) - var(--nav-tabs-height) - var(--shared-terminal-height, 0px))`,
               color: 'var(--color-text-muted)',
               fontSize: 'var(--text-md)',
             }}>
@@ -668,12 +730,44 @@ function AppInner() {
               onExplorerStateChange={setExplorerState}
               socket={socket}
               onOpenInDiff={handleOpenDiffView}
+              treeExpandedPaths={treeExpandedPathsCache}
+              treeDataCache={treeDataCache}
+              onTreeExpandedPathsChange={handleTreeExpandedPathsChange}
+              onTreeDataChange={handleTreeDataChange}
+              showTerminal={sharedTerminalOpen}
+              onToggleTerminal={toggleSharedTerminal}
             />
           </ErrorBoundary>
         </div>
       )}
 
       </div>
+
+      {/* Shared terminals — one per session, kept alive across session/tab switches */}
+      {sharedTerminalOpen && Array.from(spawnedTerminalSessions).map(sid => {
+        const session = sessions.find(s => s.id === sid);
+        if (!session?.folderPath) return null;
+        const activeSid = focusedSessionId ?? sessions[0]?.id;
+        const isActive = sid === activeSid && (activeTab === 'explorer' || activeTab === 'git-diff');
+        return (
+          <div
+            key={sid}
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: `${SHARED_TERMINAL_HEIGHT}px`,
+              zIndex: 50,
+              borderTop: '1px solid var(--color-border-base)',
+              background: 'var(--color-bg-base)',
+              display: isActive ? undefined : 'none',
+            }}
+          >
+            <EphemeralTerminal cwd={session.folderPath} socket={socket} theme={theme} onClose={toggleSharedTerminal} />
+          </div>
+        );
+      })}
 
       {showCreateModal && (
         <CreateSessionModal
@@ -832,6 +926,10 @@ function GlobalGitDiffView({
   onSelectSession,
   onOpenInExplorer,
   initialSearchQuery,
+  diffCollapsedSectionsCache,
+  onCollapsedSectionsChange,
+  showTerminal,
+  onToggleTerminal,
 }: {
   sessionId: string;
   sessionStatus: string;
@@ -841,6 +939,10 @@ function GlobalGitDiffView({
   onSelectSession: (id: string) => void;
   onOpenInExplorer?: (absolutePath: string) => void;
   initialSearchQuery?: string;
+  diffCollapsedSectionsCache: Map<string, Set<'unstaged' | 'staged' | 'branch' | 'untracked'>>;
+  onCollapsedSectionsChange: (sessionId: string, sections: Set<'unstaged' | 'staged' | 'branch' | 'untracked'>) => void;
+  showTerminal?: boolean;
+  onToggleTerminal?: () => void;
 }) {
   const { diff, isLoading, error, refresh } = useGitDiff({
     sessionId,
@@ -849,7 +951,7 @@ function GlobalGitDiffView({
   });
 
   return (
-    <div style={{ height: `calc(100vh - var(--header-height) - var(--nav-tabs-height))`, display: 'flex' }}>
+    <div style={{ height: `calc(100vh - var(--header-height) - var(--nav-tabs-height) - var(--shared-terminal-height, 0px))`, display: 'flex' }}>
       <GitDiffPanel
         diff={diff}
         theme={theme}
@@ -865,6 +967,10 @@ function GlobalGitDiffView({
         showHeaderControls={false}
         onOpenInExplorer={onOpenInExplorer}
         initialSearchQuery={initialSearchQuery}
+        initialCollapsedSections={diffCollapsedSectionsCache.get(currentSessionId)}
+        onCollapsedSectionsChange={(sections) => onCollapsedSectionsChange(currentSessionId, sections)}
+        showTerminal={showTerminal}
+        onToggleTerminal={onToggleTerminal}
       />
     </div>
   );

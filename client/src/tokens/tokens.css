@@ -30,6 +30,7 @@
   /* === LAYOUT === */
   --header-height:   52px;
   --nav-tabs-height: 0px;  /* Tabs merged into header */
+  --shared-terminal-height: 0px;  /* Set dynamically when shared terminal is open */
 
   /* === TYPOGRAPHY === */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

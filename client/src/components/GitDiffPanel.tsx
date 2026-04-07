@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import parseDiff from 'parse-diff';
-import { GitCommit, EyeOff, WrapText, FolderOpen } from 'lucide-react';
+import { GitCommit, EyeOff, WrapText, FolderOpen, Terminal as TerminalIcon } from 'lucide-react';
 import type { GitDiffResponse, SessionInfo, GitBranchesResponse } from '@remote-orchestrator/shared';
 import { api } from '../services/api.js';
 import { DiffHunk } from './DiffHunk.js';
@@ -33,6 +33,14 @@ interface GitDiffPanelProps {
   onOpenInExplorer?: (absolutePath: string) => void;
   /** Pre-fill the search filter (e.g. when navigating from Explorer with a file selected). */
   initialSearchQuery?: string;
+  /** Restore previously collapsed sections (survives tab switches). */
+  initialCollapsedSections?: Set<SectionKey>;
+  /** Called when collapsed sections change — parent can cache. */
+  onCollapsedSectionsChange?: (sections: Set<SectionKey>) => void;
+  /** Whether the shared terminal is open. */
+  showTerminal?: boolean;
+  /** Toggle the shared terminal. */
+  onToggleTerminal?: () => void;
 }
 
 type SectionKey = 'unstaged' | 'staged' | 'branch' | 'untracked';
@@ -67,6 +75,10 @@ export function GitDiffPanel({
   showSessionSelector = true,
   onOpenInExplorer,
   initialSearchQuery,
+  initialCollapsedSections,
+  onCollapsedSectionsChange,
+  showTerminal,
+  onToggleTerminal,
 }: GitDiffPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
@@ -104,7 +116,7 @@ export function GitDiffPanel({
   const [showFullKey, setShowFullKey] = useState<string | null>(null);
   const [collapseAllKey, setCollapseAllKey] = useState(0);
   const [wordWrap, setWordWrap] = useState(() => localStorage.getItem('gitdiff-word-wrap') === 'true');
-  const [collapsedSections, setCollapsedSections] = useState<Set<SectionKey>>(new Set());
+  const [collapsedSections, setCollapsedSections] = useState<Set<SectionKey>>(() => initialCollapsedSections ?? new Set());
   const [untrackedContent, setUntrackedContent] = useState<Map<string, string | 'loading' | 'error'>>(new Map());
   const [trackingFile, setTrackingFile] = useState<string | null>(null);
   const [ignoringFile, setIgnoringFile] = useState<string | null>(null);
@@ -137,6 +149,7 @@ export function GitDiffPanel({
     setCollapsedSections(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
+      onCollapsedSectionsChange?.(next);
       return next;
     });
   }
@@ -873,6 +886,27 @@ export function GitDiffPanel({
             >
               <GitCommit size={11} strokeWidth={2} />
               {commitModeActive ? 'Exit' : 'Commit'}
+            </button>
+          )}
+          {onToggleTerminal && (
+            <button
+              onClick={onToggleTerminal}
+              title={showTerminal ? 'Close terminal' : 'Open terminal'}
+              style={{
+                background: showTerminal ? 'var(--color-accent)' : 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px',
+                display: 'inline-flex',
+                borderRadius: 'var(--radius-sm)',
+                color: showTerminal ? '#fff' : 'var(--color-text-muted)',
+                transition: 'color var(--transition-fast)',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { if (!showTerminal) e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+              onMouseLeave={(e) => { if (!showTerminal) e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+            >
+              <TerminalIcon size={13} strokeWidth={1.75} />
             </button>
           )}
           {showHeaderControls && (

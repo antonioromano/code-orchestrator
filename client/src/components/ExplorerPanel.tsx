@@ -36,6 +36,7 @@ import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check,
 import type { Socket } from 'socket.io-client';
 import type { SessionInfo, FileContentResponse, FileSearchResult, GitFileStatusCode, ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { ExplorerFolderTree } from './ExplorerFolderTree.js';
+import type { TreeNode } from './ExplorerFolderTree.js';
 import { SessionSidebar } from './SessionSidebar.js';
 import { ResizeDivider } from './ResizeDivider.js';
 import { EphemeralTerminal } from './EphemeralTerminal.js';
@@ -90,6 +91,18 @@ interface ExplorerPanelProps {
   /** When true, hides SessionSidebar and uses 100% height (for Dashboard split view). */
   embedded?: boolean;
   onOpenInDiff?: (fileName?: string) => void;
+  /** Cached expanded paths for the tree (survives tab switches). */
+  treeExpandedPaths?: Map<string, Set<string>>;
+  /** Cached tree data (survives tab switches). */
+  treeDataCache?: Map<string, Map<string, TreeNode>>;
+  /** Called when expanded paths change — parent can cache. */
+  onTreeExpandedPathsChange?: (sessionId: string, paths: Set<string>) => void;
+  /** Called when tree data changes — parent can cache. */
+  onTreeDataChange?: (sessionId: string, data: Map<string, TreeNode>) => void;
+  /** Whether the shared terminal is open. */
+  showTerminal?: boolean;
+  /** Toggle the shared terminal. */
+  onToggleTerminal?: () => void;
 }
 
 function FileIcon({ ext }: { ext: string }) {
@@ -226,7 +239,7 @@ function SearchResultsList({ results, isSearching, selectedFilePath, rootPath, o
   );
 }
 
-export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSessionId, initialFilePath, initialSearchQuery, onExplorerStateChange, socket, embedded, onOpenInDiff }: ExplorerPanelProps) {
+export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSessionId, initialFilePath, initialSearchQuery, onExplorerStateChange, socket, embedded, onOpenInDiff, treeExpandedPaths, treeDataCache, onTreeExpandedPathsChange, onTreeDataChange, showTerminal: showTerminalProp, onToggleTerminal }: ExplorerPanelProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [treeKey, setTreeKey] = useState(0);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(initialFilePath ?? null);
@@ -246,7 +259,10 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
   const containerRef = useRef<HTMLDivElement>(null);
   const treePanelRef = useRef<HTMLDivElement>(null);
   const [isNarrow, setIsNarrow] = useState(false);
-  const [showTerminal, setShowTerminal] = useState(false);
+  // Use prop-based terminal when available (shared terminal), otherwise internal state
+  const [showTerminalLocal, setShowTerminalLocal] = useState(false);
+  const showTerminal = showTerminalProp ?? showTerminalLocal;
+  const toggleTerminal = onToggleTerminal ?? (() => setShowTerminalLocal(t => !t));
 
   const { size: sidebarWidth, isDragging: isSidebarDragging, handleMouseDown: handleSidebarMouseDown } = useResizablePanel({
     containerRef,
@@ -576,7 +592,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
   if (sessions.length === 0) {
     return (
       <div style={{
-        height: embedded ? '100%' : `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
+        height: embedded ? '100%' : `calc(100vh - var(--header-height) - var(--nav-tabs-height) - var(--shared-terminal-height, 0px))`,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -1003,7 +1019,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
     <div
       ref={containerRef}
       style={{
-        height: embedded ? '100%' : `calc(100vh - var(--header-height) - var(--nav-tabs-height))`,
+        height: embedded ? '100%' : `calc(100vh - var(--header-height) - var(--nav-tabs-height) - var(--shared-terminal-height, 0px))`,
         display: 'flex',
         flexDirection: isNarrow ? 'column' : 'row',
         overflow: 'hidden',
@@ -1205,7 +1221,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                 </button>
                 {selectedSession && socket && (
                   <button
-                    onClick={() => setShowTerminal(t => !t)}
+                    onClick={toggleTerminal}
                     title={showTerminal ? 'Close terminal' : 'Open terminal'}
                     style={{
                       background: showTerminal ? 'var(--color-accent)' : 'none',
@@ -1266,6 +1282,10 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                   selectedFilePath={selectedFilePath}
                   gitStatusMap={gitStatusMap}
                   onOpenInDiff={onOpenInDiff}
+                  initialExpandedPaths={selectedSessionId ? treeExpandedPaths?.get(selectedSessionId) : undefined}
+                  initialTreeData={selectedSessionId ? treeDataCache?.get(selectedSessionId) : undefined}
+                  onExpandedPathsChange={selectedSessionId ? (paths) => onTreeExpandedPathsChange?.(selectedSessionId, paths) : undefined}
+                  onTreeDataChange={selectedSessionId ? (data) => onTreeDataChange?.(selectedSessionId, data) : undefined}
                 />
               )}
             </div>
@@ -1273,13 +1293,13 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
 
           <ResizeDivider isDragging={isTreeDragging} onMouseDown={handleTreeMouseDown} />
 
-          {/* Right: File preview or Ephemeral Terminal (flex: 1) */}
-          {showTerminal && selectedSession ? (
+          {/* Right: File preview (or inline Ephemeral Terminal when NOT using shared terminal) */}
+          {showTerminal && !showTerminalProp && selectedSession ? (
             <EphemeralTerminal
               cwd={selectedSession.folderPath}
               socket={socket}
               theme={theme}
-              onClose={() => setShowTerminal(false)}
+              onClose={toggleTerminal}
             />
           ) : (
             filePreviewPanel

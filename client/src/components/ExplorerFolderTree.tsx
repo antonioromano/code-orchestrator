@@ -4,6 +4,11 @@ import type { DirectoryEntry, GitFileStatusCode } from '@remote-orchestrator/sha
 import { InlineIconLink } from './primitives/index.js';
 import { api } from '../services/api.js';
 
+export interface TreeNode {
+  entries: DirectoryEntry[];
+  loading: boolean;
+}
+
 interface ExplorerFolderTreeProps {
   rootPath: string;
   onFileSelect: (path: string, ext: string) => void;
@@ -11,11 +16,14 @@ interface ExplorerFolderTreeProps {
   selectedFilePath: string | null;
   gitStatusMap?: Record<string, GitFileStatusCode>;
   onOpenInDiff?: (fileName?: string) => void;
-}
-
-interface TreeNode {
-  entries: DirectoryEntry[];
-  loading: boolean;
+  /** Restore previously expanded paths (survives tab switches). */
+  initialExpandedPaths?: Set<string>;
+  /** Restore previously loaded tree data (survives tab switches). */
+  initialTreeData?: Map<string, TreeNode>;
+  /** Called whenever expandedPaths changes — parent can cache it. */
+  onExpandedPathsChange?: (paths: Set<string>) => void;
+  /** Called whenever treeData changes — parent can cache it. */
+  onTreeDataChange?: (data: Map<string, TreeNode>) => void;
 }
 
 function FileIcon({ ext, color }: { ext: string; color?: string }) {
@@ -37,14 +45,36 @@ function getGitStatusColor(status: GitFileStatusCode | undefined): string | unde
   }
 }
 
-export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, selectedFilePath, gitStatusMap, onOpenInDiff }: ExplorerFolderTreeProps) {
-  const [treeData, setTreeData] = useState<Map<string, TreeNode>>(new Map());
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const [isRootLoading, setIsRootLoading] = useState(true);
+export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, selectedFilePath, gitStatusMap, onOpenInDiff, initialExpandedPaths, initialTreeData, onExpandedPathsChange, onTreeDataChange }: ExplorerFolderTreeProps) {
+  const [treeData, setTreeDataRaw] = useState<Map<string, TreeNode>>(() => initialTreeData ?? new Map());
+  const [expandedPaths, setExpandedPathsRaw] = useState<Set<string>>(() => initialExpandedPaths ?? new Set());
+  const [isRootLoading, setIsRootLoading] = useState(() => !initialTreeData?.has(rootPath));
   const fetchCounterRef = useRef(0);
+
+  // Wrappers that also notify parent of changes
+  const setTreeData = useCallback((updater: Map<string, TreeNode> | ((prev: Map<string, TreeNode>) => Map<string, TreeNode>)) => {
+    setTreeDataRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onTreeDataChange?.(next);
+      return next;
+    });
+  }, [onTreeDataChange]);
+
+  const setExpandedPaths = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setExpandedPathsRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onExpandedPathsChange?.(next);
+      return next;
+    });
+  }, [onExpandedPathsChange]);
 
   useEffect(() => {
     if (!rootPath) return;
+    // Skip fetching if we already have cached data for this root
+    if (initialTreeData?.has(rootPath) && initialExpandedPaths && initialExpandedPaths.size > 0) {
+      setIsRootLoading(false);
+      return;
+    }
     const id = ++fetchCounterRef.current;
     setIsRootLoading(true);
     setTreeData(new Map());
@@ -60,6 +90,7 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
       setTreeData(new Map([[rootPath, { entries: [], loading: false }]]));
       setIsRootLoading(false);
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath]);
 
   const toggleExpand = useCallback(async (dirPath: string) => {
@@ -83,7 +114,7 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
     }
 
     setExpandedPaths((prev) => new Set(prev).add(dirPath));
-  }, [expandedPaths, treeData]);
+  }, [expandedPaths, treeData, setExpandedPaths, setTreeData]);
 
   // Auto-expand tree to reveal selectedFilePath (on mount or when it changes).
   // Waits for root loading to finish before attempting to expand ancestor dirs.
@@ -133,7 +164,7 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
       });
     })();
     return () => { cancelled = true; };
-  }, [selectedFilePath, rootPath, isRootLoading]);
+  }, [selectedFilePath, rootPath, isRootLoading, setTreeData, setExpandedPaths]);
 
   // Flatten tree into renderable rows
   const rows: { entry: DirectoryEntry; depth: number }[] = [];
