@@ -55,6 +55,7 @@ export interface CommitModeActions {
   toggleFile: (filePath: string, fileMeta: FileMeta) => void;
   selectAll: (fileMetas: FileMeta[]) => void;
   clearAll: () => void;
+  clearFileSelections: (filePath: string) => void;
   setCommitMessage: (msg: string) => void;
   setIsAmend: (amend: boolean) => void;
   stageAndCommit: (sessionId: string, fileMetas: FileMeta[], untrackedFiles: string[]) => Promise<void>;
@@ -244,6 +245,15 @@ export function useCommitMode(): UseCommitModeResult {
 
   const clearAll = useCallback(() => {
     setState(prev => ({ ...prev, selections: new Map() }));
+  }, []);
+
+  const clearFileSelections = useCallback((filePath: string) => {
+    setState(prev => {
+      if (!prev.selections.has(filePath)) return prev;
+      const newSelections = new Map(prev.selections);
+      newSelections.delete(filePath);
+      return { ...prev, selections: newSelections };
+    });
   }, []);
 
   const setCommitMessage = useCallback((msg: string) => {
@@ -534,6 +544,7 @@ export function useCommitMode(): UseCommitModeResult {
       toggleFile,
       selectAll,
       clearAll,
+      clearFileSelections,
       setCommitMessage,
       setIsAmend,
       stageAndCommit,

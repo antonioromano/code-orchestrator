@@ -11,6 +11,10 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd -P)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
+# --- Ports (must not collide with argus production on 5400) ---
+SERVER_PORT=5401
+CLIENT_PORT=5402
+
 # --- Runtime file paths ---
 RUNTIME_DIR="$PROJECT_ROOT/server/data"
 PID_FILE="$RUNTIME_DIR/swarm.pid"
@@ -55,9 +59,9 @@ force_kill_port() {
 
 health_check() {
   if command -v curl &>/dev/null; then
-    curl -s --max-time 2 http://localhost:5173/api/health >/dev/null 2>&1
+    curl -s --max-time 2 http://localhost:$CLIENT_PORT/api/health >/dev/null 2>&1
   elif command -v wget &>/dev/null; then
-    wget -q --timeout=2 -O /dev/null http://localhost:5173/api/health 2>/dev/null
+    wget -q --timeout=2 -O /dev/null http://localhost:$CLIENT_PORT/api/health 2>/dev/null
   else
     return 1
   fi
@@ -90,19 +94,19 @@ preflight() {
 # --- Clean stale ports ---
 
 clean_ports() {
-  if check_port 5400 || check_port 5173; then
-    echo "Killing stale processes on ports 5400/5173..."
-    kill_port 5400
-    kill_port 5173
+  if check_port $SERVER_PORT || check_port $CLIENT_PORT; then
+    echo "Killing stale processes on ports $SERVER_PORT/$CLIENT_PORT..."
+    kill_port $SERVER_PORT
+    kill_port $CLIENT_PORT
     sleep 1
     # Force kill if still alive
-    if check_port 5400 || check_port 5173; then
-      force_kill_port 5400
-      force_kill_port 5173
+    if check_port $SERVER_PORT || check_port $CLIENT_PORT; then
+      force_kill_port $SERVER_PORT
+      force_kill_port $CLIENT_PORT
       sleep 1
     fi
-    if check_port 5400 || check_port 5173; then
-      echo "Error: Could not free ports 5400/5173." >&2
+    if check_port $SERVER_PORT || check_port $CLIENT_PORT; then
+      echo "Error: Could not free ports $SERVER_PORT/$CLIENT_PORT." >&2
       exit 1
     fi
     echo "Ports cleared."
@@ -129,15 +133,15 @@ open_when_ready() {
   while [ $attempts -lt $max_attempts ]; do
     if health_check; then
       echo ""
-      echo "Dashboard ready at http://localhost:5173"
-      open_url http://localhost:5173
+      echo "Dashboard ready at http://localhost:$CLIENT_PORT"
+      open_url http://localhost:$CLIENT_PORT
       return 0
     fi
     sleep 0.5
     attempts=$((attempts + 1))
   done
   echo "Warning: Servers did not become ready within 30 seconds." >&2
-  echo "Try opening http://localhost:5173 manually." >&2
+  echo "Try opening http://localhost:$CLIENT_PORT manually." >&2
 }
 
 # --- Subcommands ---
@@ -148,7 +152,7 @@ cmd_start() {
   # Already running?
   if health_check; then
     echo "Swarm is already running. Opening dashboard..."
-    open_url http://localhost:5173
+    open_url http://localhost:$CLIENT_PORT
     exit 0
   fi
 
@@ -166,8 +170,8 @@ cmd_start() {
   echo "$method" > "$SESSION_FILE"
 
   echo "Starting Swarm in background (via $method)..."
-  echo "  Server: http://localhost:5400"
-  echo "  Client: http://localhost:5173"
+  echo "  Server: http://localhost:$SERVER_PORT"
+  echo "  Client: http://localhost:$CLIENT_PORT"
   echo ""
 
   case "$method" in
@@ -226,22 +230,22 @@ cmd_stop() {
 
   # Safety net: kill anything still on our ports
   sleep 1
-  kill_port 5400
-  kill_port 5173
+  kill_port $SERVER_PORT
+  kill_port $CLIENT_PORT
   sleep 1
 
   # Force kill if still alive
-  if check_port 5400 || check_port 5173; then
-    force_kill_port 5400
-    force_kill_port 5173
+  if check_port $SERVER_PORT || check_port $CLIENT_PORT; then
+    force_kill_port $SERVER_PORT
+    force_kill_port $CLIENT_PORT
     sleep 1
   fi
 
   # Clean up runtime files
   rm -f "$PID_FILE" "$SESSION_FILE"
 
-  if check_port 5400 || check_port 5173; then
-    echo "Warning: Some processes may still be running on ports 5400/5173." >&2
+  if check_port $SERVER_PORT || check_port $CLIENT_PORT; then
+    echo "Warning: Some processes may still be running on ports $SERVER_PORT/$CLIENT_PORT." >&2
   else
     echo "Swarm stopped."
   fi
@@ -252,7 +256,7 @@ cmd_status() {
     local method="unknown"
     [ -f "$SESSION_FILE" ] && method=$(cat "$SESSION_FILE")
     echo "Swarm is running (via $method)."
-    echo "  Dashboard: http://localhost:5173"
+    echo "  Dashboard: http://localhost:$CLIENT_PORT"
   elif [ -f "$SESSION_FILE" ]; then
     echo "Swarm appears to have crashed."
     echo "  Run 'swarm stop' to clean up, then 'swarm start'."

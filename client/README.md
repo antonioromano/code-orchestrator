@@ -12,14 +12,14 @@ React frontend for Argus. Provides a dashboard of browser-based terminals connec
 ## Development
 
 ```bash
-npm run dev -w client    # Vite dev server on port 5173
+npm run dev -w client    # Vite dev server on port 5402
 npm run build -w client  # TypeScript check + Vite build
 npm run lint -w client   # ESLint
 ```
 
 ## Vite Proxy
 
-In development, Vite proxies these paths to the server at `http://localhost:5400`:
+In development, Vite proxies these paths to the server at `http://localhost:5401`:
 
 - `/api` — REST endpoints (session CRUD, filesystem browsing)
 - `/socket.io` — WebSocket transport for terminal I/O

@@ -1,6 +1,6 @@
 # Argus
 
-![Version](https://img.shields.io/badge/version-0.12.4-blue) ![Node](https://img.shields.io/badge/node-18%2B-green) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
+![Version](https://img.shields.io/badge/version-0.13.0-blue) ![Node](https://img.shields.io/badge/node-18%2B-green) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
 
 A web-based dashboard for managing multiple AI coding agent sessions simultaneously. Spawn [Claude Code](https://claude.ai/code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), or [OpenAI Codex](https://github.com/openai/codex) processes via pseudo-terminals, stream their I/O to browser-based terminals, and monitor session state in real time.
 
@@ -246,7 +246,7 @@ Stops the running service, removes the `swarm` symlink, and cleans up runtime fi
 remote-orchestrator/
   shared/     # Shared TypeScript types (session models, REST shapes, Socket.io event maps)
   server/     # Express + Socket.io + node-pty backend (dev :5401, prod :5400)
-  client/     # React 19 + Vite + xterm.js frontend (port 5173)
+  client/     # React 19 + Vite + xterm.js frontend (port 5402)
   bin/        # swarm (dev) and argus (production) launcher scripts
   scripts/    # Post-install helpers (node-pty native binary fix)
   docs/       # Screenshots and planning documents
@@ -258,7 +258,7 @@ remote-orchestrator/
 npm install                   # Install all workspace dependencies
 npm run dev                   # Run server + client concurrently
 npm run dev -w server         # Server only (Express on :5401)
-npm run dev -w client         # Client only (Vite on :5173)
+npm run dev -w client         # Client only (Vite on :5402)
 npm run build -w shared       # Build shared types (do this first)
 npm run build -w server       # Build server
 npm run build -w client       # Build client
@@ -290,7 +290,7 @@ When bumping the version, update it in **both** `package.json` (root) and the ve
 | **Syntax highlighting** | react-syntax-highlighter (Prism, 29 languages) |
 | **Icons** | lucide-react |
 | **Build** | npm workspaces, concurrently, TypeScript 5.7+ |
-| **Ports** | Production: 5400 (all-in-one) · Dev: API 5401, Vite 5173 (proxy to 5401) |
+| **Ports** | Production: 5400 (all-in-one) · Dev: API 5401, Vite 5402 (proxy to 5401) |
 
 ---
 

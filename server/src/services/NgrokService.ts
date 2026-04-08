@@ -68,7 +68,7 @@ export class NgrokService {
     this.ngrokPath = await findNgrokAsync();
   }
 
-  async start(port: number = 5400): Promise<string> {
+  async start(port: number = 5401): Promise<string> {
     if (this.tunnelStatus === 'connected' && this.publicUrl) {
       return this.publicUrl;
     }

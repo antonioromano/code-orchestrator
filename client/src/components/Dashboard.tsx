@@ -103,7 +103,7 @@ function FocusedDiffWrapper({
   onOpenInExplorer?: (absolutePath: string) => void;
   initialSearchQuery?: string;
 }) {
-  const { diff, isLoading, error, refresh } = useGitDiff({
+  const { diff, isLoading, error, refresh, expandFileContext, expandingFiles } = useGitDiff({
     sessionId,
     isOpen: diffState.isOpen,
     sessionStatus: sessionStatus as 'running' | 'waiting' | 'idle' | 'exited',
@@ -125,6 +125,8 @@ function FocusedDiffWrapper({
       showSessionSelector={false}
       onOpenInExplorer={onOpenInExplorer}
       initialSearchQuery={initialSearchQuery}
+      onExpandFileContext={expandFileContext}
+      expandingFiles={expandingFiles}
     />
   );
 }

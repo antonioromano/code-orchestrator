@@ -64,11 +64,11 @@
   /* === GLASS EFFECTS === */
   --color-bg-glass: rgba(241, 243, 254, 0.80);
 
-  /* === STATUS LED (30% opacity of status colors) === */
-  --color-status-waiting-led: rgba(245, 158, 11, 0.30);
-  --color-status-running-led: rgba(174, 198, 255, 0.30);
-  --color-status-idle-led:    rgba(165, 213, 112, 0.30);
-  --color-status-exited-led:  rgba(156, 163, 175, 0.30);
+  /* === STATUS LED (60% opacity of status colors) === */
+  --color-status-waiting-led: rgba(245, 158, 11, 0.9);
+  --color-status-running-led: rgba(174, 198, 255, 0.9);
+  --color-status-idle-led:    rgba(165, 213, 112, 0.9);
+  --color-status-exited-led:  rgba(156, 163, 175, 0.9);
 
   /* ── LIGHT THEME (default) ── */
   --color-bg-deepest:  #ffffff;

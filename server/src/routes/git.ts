@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { SessionManager } from '../services/SessionManager.js';
 import type { GitService } from '../services/GitService.js';
-import type { PatchSelectionRequest, CommitRequest, GitCheckoutRequest, GitCreateBranchRequest } from '@remote-orchestrator/shared';
+import type { PatchSelectionRequest, CommitRequest, GitCheckoutRequest, GitCreateBranchRequest, DiffFileRequest } from '@remote-orchestrator/shared';
 
 export function createGitRoutes(manager: SessionManager, gitService: GitService): Router {
   const router = Router();
@@ -27,6 +27,44 @@ export function createGitRoutes(manager: SessionManager, gitService: GitService)
 
     res.setHeader('Cache-Control', 'no-cache');
     res.json(diff);
+  });
+
+  router.get('/sessions/:id/diff-file', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ diff: '', error: 'Session not found' });
+      return;
+    }
+
+    const filePath = req.query.filePath as string | undefined;
+    const contextLines = parseInt(req.query.contextLines as string, 10);
+    const source = req.query.source as DiffFileRequest['source'] | undefined;
+
+    if (!filePath || isNaN(contextLines) || !source) {
+      res.status(400).json({ diff: '', error: 'filePath, contextLines, and source are required' });
+      return;
+    }
+
+    // Path traversal validation
+    if (filePath.startsWith('/') || filePath.includes('..')) {
+      res.status(400).json({ diff: '', error: 'Invalid file path' });
+      return;
+    }
+
+    if (!['unstaged', 'staged', 'branch'].includes(source)) {
+      res.status(400).json({ diff: '', error: 'source must be unstaged, staged, or branch' });
+      return;
+    }
+
+    const result = await gitService.getDiffForFile(session.folderPath, filePath, contextLines, source);
+
+    if (result.error) {
+      res.status(500).json(result);
+      return;
+    }
+
+    res.setHeader('Cache-Control', 'no-cache');
+    res.json(result);
   });
 
   router.post('/sessions/:id/git-add', async (req, res) => {
