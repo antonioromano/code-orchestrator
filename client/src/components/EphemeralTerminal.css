@@ -6,3 +6,8 @@
   left: 0 !important;
   top: 0 !important;
 }
+
+/* Ensure xterm fills container so viewport scrolling works properly */
+.ephemeral-terminal-host .xterm {
+  height: 100%;
+}

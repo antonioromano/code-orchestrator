@@ -5,8 +5,8 @@ interface UseResizablePanelOptions {
   defaultSize: number;
   minSize: number;
   maxSize: number;
-  /** Which side the panel is measured from. 'left' = offset from left edge, 'right' = offset from right edge */
-  direction?: 'left' | 'right';
+  /** Which side the panel is measured from. 'left'/'right' = horizontal, 'top'/'bottom' = vertical */
+  direction?: 'left' | 'right' | 'top' | 'bottom';
   /** 'px' measures in pixels; '%' measures as percentage of container width */
   unit?: 'px' | '%';
   /** localStorage key for persisting the size across page loads */
@@ -64,22 +64,28 @@ export function useResizablePanel({
   useEffect(() => {
     if (!isDragging) return;
 
+    const isVertical = direction === 'top' || direction === 'bottom';
+
     const onMouseMove = (e: MouseEvent) => {
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
       let newSize: number;
 
-      if (unit === '%') {
-        const offset = direction === 'right'
-          ? rect.right - e.clientX
-          : e.clientX - rect.left;
-        newSize = Math.min(Math.max((offset / rect.width) * 100, minSize), maxSize);
+      if (isVertical) {
+        const offset = direction === 'bottom'
+          ? rect.bottom - e.clientY
+          : e.clientY - rect.top;
+        newSize = unit === '%'
+          ? Math.min(Math.max((offset / rect.height) * 100, minSize), maxSize)
+          : Math.min(Math.max(offset, minSize), maxSize);
       } else {
         const offset = direction === 'right'
           ? rect.right - e.clientX
           : e.clientX - rect.left;
-        newSize = Math.min(Math.max(offset, minSize), maxSize);
+        newSize = unit === '%'
+          ? Math.min(Math.max((offset / rect.width) * 100, minSize), maxSize)
+          : Math.min(Math.max(offset, minSize), maxSize);
       }
 
       setSize(newSize);
