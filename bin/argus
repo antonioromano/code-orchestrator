@@ -348,6 +348,8 @@ cmd_stop() {
 cmd_status() {
   clean_stale_pid
 
+  echo "Argus v$(get_package_version)"
+  echo ""
   if is_running; then
     echo "Argus is running (PID $(read_pid))."
     echo "  ARGUS_PORT=$PORT ($PORT_SOURCE)"
@@ -479,7 +481,7 @@ cmd_update() {
   git checkout "$target_tag"
 
   echo "Installing dependencies..."
-  npm install
+  npm install --include=dev
 
   echo "Building..."
   npm run build
@@ -594,6 +596,8 @@ cmd_remove() {
 }
 
 cmd_help() {
+  echo "Argus v$(get_package_version)"
+  echo ""
   echo "Usage: argus [command]"
   echo ""
   echo "Commands:"
