@@ -57,6 +57,10 @@ export function setupSocketHandler(
     void updateService.checkForUpdate();
 
     socket.on('session:join', (sessionId: string) => {
+      if (!manager.getSession(sessionId)) {
+        socket.emit('session:error', { sessionId, message: 'Session not found' });
+        return;
+      }
       socket.join(sessionId);
       // Register this socket for dimension tracking
       if (!clientDimensions.has(sessionId)) {
@@ -84,26 +88,22 @@ export function setupSocketHandler(
     });
 
     socket.on('session:input', ({ sessionId, data }) => {
-      try {
-        manager.writeToSession(sessionId, data);
-      } catch (err) {
-        console.error(`Error writing to session ${sessionId}:`, err);
-      }
+      if (!manager.getSession(sessionId)) return;
+      manager.writeToSession(sessionId, data);
     });
 
     socket.on('session:resize', ({ sessionId, cols, rows }) => {
-      try {
-        // Store this client's dimensions
-        const sockets = clientDimensions.get(sessionId);
-        if (sockets) {
-          sockets.set(socket.id, { cols, rows });
-        }
-        // Resize PTY to the maximum dimensions across all connected clients
-        const max = getMaxDimensions(sessionId) ?? { cols, rows };
-        manager.resizeSession(sessionId, max.cols, max.rows);
-      } catch (err) {
-        console.error(`Error resizing session ${sessionId}:`, err);
+      if (!manager.getSession(sessionId)) return;
+      // Store this client's dimensions
+      const sockets = clientDimensions.get(sessionId);
+      if (sockets) {
+        sockets.set(socket.id, { cols, rows });
       }
+      // Resize PTY to the maximum dimensions across all connected clients
+      const max = getMaxDimensions(sessionId) ?? { cols, rows };
+      try {
+        manager.resizeSession(sessionId, max.cols, max.rows);
+      } catch { /* session may have exited between guard check and resize */ }
     });
 
     // Ephemeral terminal events (Explorer view — not persisted, not in session list)

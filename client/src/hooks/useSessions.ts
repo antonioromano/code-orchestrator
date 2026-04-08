@@ -45,6 +45,10 @@ export function useSessions(socket: TypedSocket) {
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     };
 
+    const handleSessionError = ({ sessionId }: { sessionId: string; message: string }) => {
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    };
+
     const handleGitStatus = ({ sessionId, hasGitChanges }: { sessionId: string; hasGitChanges: boolean }) => {
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? { ...s, hasGitChanges } : s)),
@@ -55,6 +59,7 @@ export function useSessions(socket: TypedSocket) {
     socket.on('session:exit', handleExit);
     socket.on('session:created', handleCreated);
     socket.on('session:deleted', handleDeleted);
+    socket.on('session:error', handleSessionError);
     socket.on('session:gitStatus', handleGitStatus);
 
     return () => {
@@ -62,6 +67,7 @@ export function useSessions(socket: TypedSocket) {
       socket.off('session:exit', handleExit);
       socket.off('session:created', handleCreated);
       socket.off('session:deleted', handleDeleted);
+      socket.off('session:error', handleSessionError);
       socket.off('session:gitStatus', handleGitStatus);
     };
   }, [socket]);

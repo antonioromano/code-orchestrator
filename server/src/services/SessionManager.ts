@@ -248,6 +248,11 @@ export class SessionManager {
         console.error(`Failed to restore session "${p.name}":`, err);
       }
     }
+
+    // Ensure sessions.json reflects only successfully restored sessions.
+    // This is idempotent when all sessions restore, but necessary when some
+    // or all fail — otherwise stale entries persist and retry every restart.
+    await this.persistSessions();
   }
 
   private toSessionInfo(session: ManagedSession): SessionInfo {

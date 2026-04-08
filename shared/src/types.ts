@@ -82,6 +82,7 @@ export interface ServerToClientEvents {
   'auth:required': (payload: { required: boolean }) => void;
   'update:available': (status: UpdateStatus) => void;
   'update:applying': () => void;
+  'session:error': (payload: { sessionId: string; message: string }) => void;
   'session:gitStatus': (payload: { sessionId: string; hasGitChanges: boolean }) => void;
   // Ephemeral terminal responses
   'ephemeral:output': (payload: { id: string; data: string }) => void;
