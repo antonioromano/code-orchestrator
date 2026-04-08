@@ -26,6 +26,8 @@ import { MobileBottomNav } from './components/MobileBottomNav.js';
 import { api, setToken } from './services/api.js';
 import { WifiOff, Settings, Maximize2, Minimize2, Globe, ArrowUpCircle, Sun, Moon, Loader2, Terminal, GitBranch, FolderOpen } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
+import { useResizablePanel } from './hooks/useResizablePanel.js';
+import { ResizeDivider } from './components/ResizeDivider.js';
 
 interface DiffState {
   isOpen: boolean;
@@ -158,7 +160,20 @@ function AppInner() {
   }, [diffCollapsedSectionsCache]);
 
   // --- Shared terminal state ---
-  const SHARED_TERMINAL_HEIGHT = 200;
+  const sharedTerminalContainerRef = useRef<HTMLElement>(document.documentElement);
+  const {
+    size: sharedTerminalHeight,
+    isDragging: isTerminalDragging,
+    handleMouseDown: handleTerminalDividerMouseDown,
+  } = useResizablePanel({
+    containerRef: sharedTerminalContainerRef,
+    defaultSize: 200,
+    minSize: 100,
+    maxSize: 500,
+    direction: 'bottom',
+    unit: 'px',
+    storageKey: 'shared-terminal-height',
+  });
   const [sharedTerminalOpen, setSharedTerminalOpen] = useState(false);
   // Track session IDs that have had a terminal spawned (kept alive across session switches)
   const [spawnedTerminalSessions, setSpawnedTerminalSessions] = useState<Set<string>>(new Set());
@@ -192,8 +207,17 @@ function AppInner() {
   // Set CSS variable for terminal height offset so tab panels can account for it
   useEffect(() => {
     const isTerminalVisible = sharedTerminalOpen && (activeTab === 'explorer' || activeTab === 'git-diff');
-    document.documentElement.style.setProperty('--shared-terminal-height', isTerminalVisible ? `${SHARED_TERMINAL_HEIGHT}px` : '0px');
-  }, [sharedTerminalOpen, activeTab]);
+    document.documentElement.style.setProperty('--shared-terminal-height', isTerminalVisible ? `${sharedTerminalHeight}px` : '0px');
+  }, [sharedTerminalOpen, activeTab, sharedTerminalHeight]);
+
+  // Refit terminals when shared terminal resize ends
+  const prevTerminalDragging = useRef(false);
+  useEffect(() => {
+    if (prevTerminalDragging.current && !isTerminalDragging) {
+      window.dispatchEvent(new Event('terminal:refit'));
+    }
+    prevTerminalDragging.current = isTerminalDragging;
+  }, [isTerminalDragging]);
 
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
@@ -744,30 +768,51 @@ function AppInner() {
       </div>
 
       {/* Shared terminals — one per session, kept alive across session/tab switches */}
-      {sharedTerminalOpen && Array.from(spawnedTerminalSessions).map(sid => {
-        const session = sessions.find(s => s.id === sid);
-        if (!session?.folderPath) return null;
+      {sharedTerminalOpen && (() => {
         const activeSid = focusedSessionId ?? sessions[0]?.id;
-        const isActive = sid === activeSid && (activeTab === 'explorer' || activeTab === 'git-diff');
+        const isAnyActive = activeSid && (activeTab === 'explorer' || activeTab === 'git-diff');
         return (
           <div
-            key={sid}
             style={{
               position: 'fixed',
               bottom: 0,
               left: 0,
               right: 0,
-              height: `${SHARED_TERMINAL_HEIGHT}px`,
+              height: `${sharedTerminalHeight}px`,
               zIndex: 50,
-              borderTop: '1px solid var(--color-border-base)',
               background: 'var(--color-bg-base)',
-              display: isActive ? undefined : 'none',
+              display: isAnyActive ? 'flex' : 'none',
+              flexDirection: 'column',
+              cursor: isTerminalDragging ? 'row-resize' : undefined,
+              userSelect: isTerminalDragging ? 'none' : undefined,
             }}
           >
-            <EphemeralTerminal cwd={session.folderPath} socket={socket} theme={theme} onClose={toggleSharedTerminal} />
+            <ResizeDivider
+              isDragging={isTerminalDragging}
+              onMouseDown={handleTerminalDividerMouseDown}
+              orientation="horizontal"
+            />
+            {Array.from(spawnedTerminalSessions).map(sid => {
+              const session = sessions.find(s => s.id === sid);
+              if (!session?.folderPath) return null;
+              const isActive = sid === activeSid;
+              return (
+                <div
+                  key={sid}
+                  style={{
+                    flex: 1,
+                    minHeight: 0,
+                    display: isActive ? 'flex' : 'none',
+                    flexDirection: 'column',
+                  }}
+                >
+                  <EphemeralTerminal cwd={session.folderPath} socket={socket} theme={theme} onClose={toggleSharedTerminal} />
+                </div>
+              );
+            })}
           </div>
         );
-      })}
+      })()}
 
       {showCreateModal && (
         <CreateSessionModal

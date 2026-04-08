@@ -37,7 +37,7 @@ export function EphemeralTerminal({ cwd, socket, theme, onClose }: EphemeralTerm
   }
 
   return (
-    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: theme === 'dark' ? '#1a1b26' : '#f5f5f5' }}>
+    <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: theme === 'dark' ? '#1a1b26' : '#f5f5f5' }}>
       {/* Header */}
       <div style={{
         display: 'flex',
