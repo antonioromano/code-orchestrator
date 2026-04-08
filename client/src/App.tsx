@@ -989,7 +989,7 @@ function GlobalGitDiffView({
   showTerminal?: boolean;
   onToggleTerminal?: () => void;
 }) {
-  const { diff, isLoading, error, refresh } = useGitDiff({
+  const { diff, isLoading, error, refresh, expandFileContext, expandingFiles } = useGitDiff({
     sessionId,
     isOpen: true,
     sessionStatus: sessionStatus as 'running' | 'waiting' | 'idle' | 'exited',
@@ -1016,6 +1016,8 @@ function GlobalGitDiffView({
         onCollapsedSectionsChange={(sections) => onCollapsedSectionsChange(currentSessionId, sections)}
         showTerminal={showTerminal}
         onToggleTerminal={onToggleTerminal}
+        onExpandFileContext={expandFileContext}
+        expandingFiles={expandingFiles}
       />
     </div>
   );

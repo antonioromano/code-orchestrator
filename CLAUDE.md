@@ -18,7 +18,7 @@ npm run dev
 # Run only the server (Express + Socket.io on port 5400)
 npm run dev -w server
 
-# Run only the client (Vite on port 5173)
+# Run only the client (Vite on port 5402)
 npm run dev -w client
 
 # Build
@@ -82,7 +82,7 @@ Users update via `argus update`, which fetches the latest tag and checks it out.
 
 ## Key Details
 
-- Server port: **5400**, Client port: **5173** (Vite dev server proxies API/WS to server)
+- Server port: **5400**, Client dev port: **5402** (Vite dev server proxies API/WS to server on 5401)
 - TypeScript strict mode, ES2022 target, ESM (`"type": "module"`) throughout
 - Server uses `.js` extensions in imports (required for ESM resolution with TypeScript)
 - Session data files (`server/data/sessions.json`, `server/data/order.json`) are gitignored

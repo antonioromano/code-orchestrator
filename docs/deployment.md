@@ -218,6 +218,6 @@ Each instance has its own sessions, config, PID file, and log file.
 
 ## Dev and prod coexistence
 
-Dev mode (`npm run dev` / `swarm start`) uses port 5401 for the API and 5173 for Vite. Production (`argus`) uses port 5400. They can run simultaneously from the same repo — sessions and data are isolated via separate data directories.
+Dev mode (`npm run dev` / `swarm start`) uses port 5401 for the API and 5402 for Vite. Production (`argus`) uses port 5400. They can run simultaneously from the same repo — sessions and data are isolated via separate data directories.
 
 For a clean separation, use two clones: one for development, one as the production installation.

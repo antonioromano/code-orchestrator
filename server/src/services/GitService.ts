@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { appendFile } from 'fs/promises';
 import path from 'path';
-import type { GitDiffResponse, GitFileStatusCode, GitFileStatusResponse, PatchSelectionRequest, PatchOperationResponse, CommitResponse, GitLogResponse, GitBranchesResponse } from '@remote-orchestrator/shared';
+import type { GitDiffResponse, GitFileStatusCode, GitFileStatusResponse, PatchSelectionRequest, PatchOperationResponse, CommitResponse, GitLogResponse, GitBranchesResponse, DiffFileResponse } from '@remote-orchestrator/shared';
 
 function findGit(): string {
   try {
@@ -223,6 +223,32 @@ export class GitService {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to get diff';
       return { unstaged: '', staged: '', branch: '', untracked: [], error: message };
+    }
+  }
+
+  async getDiffForFile(folderPath: string, filePath: string, contextLines: number, source: 'unstaged' | 'staged' | 'branch'): Promise<DiffFileResponse> {
+    const isRepo = await this.isGitRepo(folderPath);
+    if (!isRepo) {
+      return { diff: '', error: 'Not a git repository' };
+    }
+
+    // Cap context to prevent abuse
+    const ctx = Math.min(Math.max(contextLines, 0), 200);
+
+    try {
+      const args = ['diff', `-U${ctx}`];
+      if (source === 'staged') {
+        args.push('--cached');
+      } else if (source === 'branch') {
+        args.push('HEAD');
+      }
+      args.push('--', filePath);
+
+      const diff = await execGit(args, folderPath);
+      return { diff };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to get file diff';
+      return { diff: '', error: message };
     }
   }
 

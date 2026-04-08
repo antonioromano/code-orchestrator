@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import type parseDiff from 'parse-diff';
 import { ChevronDown, ChevronRight, FolderOpen } from 'lucide-react';
 import { DiffHunk } from './DiffHunk.js';
+import { DiffExpandRow } from './DiffExpandRow.js';
 import { TriStateCheckbox, InlineIconLink } from './primitives/index.js';
 import type { FileSelection, FileMeta, TriState } from '../hooks/useCommitMode.js';
 
@@ -29,9 +30,11 @@ interface DiffFileSectionProps {
   wordWrap?: boolean;
   onRevertChunk?: (chunkIndex: number, totalChanges: number) => void;
   onOpenInExplorer?: () => void;
+  onExpandContext?: () => void;
+  isExpandLoading?: boolean;
 }
 
-export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, searchQuery, commitMode, forceShowFull, wordWrap, onRevertChunk, onOpenInExplorer }: DiffFileSectionProps) {
+export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, searchQuery, commitMode, forceShowFull, wordWrap, onRevertChunk, onOpenInExplorer, onExpandContext, isExpandLoading }: DiffFileSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [showFull, setShowFull] = useState(forceShowFull ?? false);
 
@@ -53,6 +56,7 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
   const isTruncated = !showFull && totalLines > MAX_LINES_BEFORE_TRUNCATE;
   const isNew = file.new;
   const isDeleted = file.deleted;
+  const showExpand = !!onExpandContext && !isBinary && !isNew && !isDeleted && file.chunks.length > 0;
 
   return (
     <div
@@ -162,7 +166,41 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
                 // Count add/del changes in this chunk for tri-state
                 const totalChanges = chunk.changes.filter(c => c.type === 'add' || c.type === 'del').length;
 
-                return (
+                // Compute hidden lines above this hunk
+                const elements = [];
+
+                if (showExpand && i === 0 && chunk.newStart > 1) {
+                  elements.push(
+                    <DiffExpandRow
+                      key={`expand-top-${i}`}
+                      hiddenLines={chunk.newStart - 1}
+                      onExpand={onExpandContext!}
+                      isLoading={isExpandLoading}
+                      theme={theme}
+                      position="top"
+                    />
+                  );
+                }
+
+                if (showExpand && i > 0) {
+                  const prevChunk = file.chunks[i - 1];
+                  const prevEnd = prevChunk.newStart + prevChunk.newLines;
+                  const gap = chunk.newStart - prevEnd;
+                  if (gap > 0) {
+                    elements.push(
+                      <DiffExpandRow
+                        key={`expand-between-${i}`}
+                        hiddenLines={gap}
+                        onExpand={onExpandContext!}
+                        isLoading={isExpandLoading}
+                        theme={theme}
+                        position="between"
+                      />
+                    );
+                  }
+                }
+
+                elements.push(
                   <DiffHunk
                     key={i}
                     chunk={chunk}
@@ -184,6 +222,23 @@ export function DiffFileSection({ file, theme, defaultExpanded, collapseAllKey, 
                     wordWrap={wordWrap}
                   />
                 );
+
+                // Expand row after the last hunk
+                if (showExpand && i === file.chunks.length - 1) {
+                  // We don't know total file lines, so always show bottom expand
+                  elements.push(
+                    <DiffExpandRow
+                      key={`expand-bottom-${i}`}
+                      hiddenLines={0}
+                      onExpand={onExpandContext!}
+                      isLoading={isExpandLoading}
+                      theme={theme}
+                      position="bottom"
+                    />
+                  );
+                }
+
+                return elements;
               })}
               {isTruncated && (
                 <div

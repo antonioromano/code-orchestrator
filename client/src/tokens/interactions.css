@@ -20,7 +20,7 @@
 
 .terminal-card {
   position: relative;
-  transition: box-shadow 0.3s ease;
+  transition: border-color 0.3s ease;
 }
 
 /* Ensure card content sits above the ::before glow layer */
@@ -54,32 +54,32 @@
   opacity: 1;
 }
 
-/* Status LED border (1px at 30% opacity via box-shadow inset) */
+/* Status border */
 .terminal-card[data-status="running"] {
-  box-shadow: inset 0 0 0 1px var(--color-status-running-led);
+  border: 2px solid var(--color-status-running-led);
 }
 .terminal-card[data-status="waiting"] {
-  box-shadow: inset 0 0 0 1px var(--color-status-waiting-led);
+  border: 2px solid var(--color-status-waiting-led);
 }
 .terminal-card[data-status="idle"] {
-  box-shadow: inset 0 0 0 1px var(--color-status-idle-led);
+  border: 2px solid var(--color-status-idle-led);
 }
 .terminal-card[data-status="exited"] {
-  box-shadow: inset 0 0 0 1px var(--color-border-ghost);
+  border: 2px solid var(--color-border-ghost);
 }
 
-/* Hover intensifies the LED border */
+/* Hover intensifies the border */
 .terminal-card:hover[data-status="running"] {
-  box-shadow: inset 0 0 0 1px rgba(174, 198, 255, 0.50);
+  border-color: rgba(174, 198, 255, 0.75);
 }
 .terminal-card:hover[data-status="waiting"] {
-  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.50);
+  border-color: rgba(245, 158, 11, 0.75);
 }
 .terminal-card:hover[data-status="idle"] {
-  box-shadow: inset 0 0 0 1px rgba(165, 213, 112, 0.50);
+  border-color: rgba(165, 213, 112, 0.75);
 }
 .terminal-card:hover[data-status="exited"] {
-  box-shadow: inset 0 0 0 1px var(--color-border-ghost-hover);
+  border-color: var(--color-border-ghost-hover);
 }
 
 /* === HOVER UTILITIES === */

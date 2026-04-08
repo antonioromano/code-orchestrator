@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 ARGUS="$PROJECT_ROOT/bin/argus"
 
-# Test ports chosen to avoid collisions with dev (5401/5173) and prod (5400)
+# Test ports chosen to avoid collisions with dev (5401/5402) and prod (5400)
 PORT_A=5490
 PORT_B=5491
 PORT_C=5492

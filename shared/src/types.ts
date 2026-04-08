@@ -137,6 +137,17 @@ export interface GitDiffResponse {
   error?: string;
 }
 
+export interface DiffFileRequest {
+  filePath: string;
+  contextLines: number;
+  source: 'unstaged' | 'staged' | 'branch';
+}
+
+export interface DiffFileResponse {
+  diff: string;
+  error?: string;
+}
+
 // Selective commit types
 
 export interface ChunkSelection {

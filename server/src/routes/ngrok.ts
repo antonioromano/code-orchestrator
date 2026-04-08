@@ -4,7 +4,7 @@ import type { AuthService } from '../services/AuthService.js';
 
 export function createNgrokRoutes(ngrokService: NgrokService, authService: AuthService): Router {
   const router = Router();
-  const serverPort = Number(process.env.ARGUS_PORT || process.env.PORT) || 5400;
+  const serverPort = Number(process.env.ARGUS_PORT || process.env.PORT) || 5401;
 
   router.get('/status', (_req, res) => {
     res.json({ ...ngrokService.getStatus(), authRequired: authService.enabled });

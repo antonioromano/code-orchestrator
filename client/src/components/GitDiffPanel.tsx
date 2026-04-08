@@ -4,6 +4,7 @@ import { GitCommit, EyeOff, WrapText, FolderOpen, Terminal as TerminalIcon } fro
 import type { GitDiffResponse, SessionInfo, GitBranchesResponse } from '@remote-orchestrator/shared';
 import { api } from '../services/api.js';
 import { DiffHunk } from './DiffHunk.js';
+import { DiffExpandRow } from './DiffExpandRow.js';
 import { DiffFileSection } from './DiffFileSection.js';
 import { SessionSidebar } from './SessionSidebar.js';
 import { ResizeDivider } from './ResizeDivider.js';
@@ -41,6 +42,10 @@ interface GitDiffPanelProps {
   showTerminal?: boolean;
   /** Toggle the shared terminal. */
   onToggleTerminal?: () => void;
+  /** Expand context for a file (increases -U lines). */
+  onExpandFileContext?: (filePath: string, source: 'unstaged' | 'staged' | 'branch') => void;
+  /** Set of "source:filePath" keys currently being fetched. */
+  expandingFiles?: Set<string>;
 }
 
 type SectionKey = 'unstaged' | 'staged' | 'branch' | 'untracked';
@@ -79,6 +84,8 @@ export function GitDiffPanel({
   onCollapsedSectionsChange,
   showTerminal,
   onToggleTerminal,
+  onExpandFileContext,
+  expandingFiles,
 }: GitDiffPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
@@ -131,6 +138,15 @@ export function GitDiffPanel({
   const commitModeResult = useCommitMode();
   const { commitMode, actions, selectedFileCount } = commitModeResult;
   const commitModeActive = commitMode.isActive;
+
+  // Wrap expand callback to clear commit mode selections for the file
+  const handleExpandFileContext = useCallback((filePath: string, source: 'unstaged' | 'staged' | 'branch') => {
+    if (!onExpandFileContext) return;
+    if (commitModeActive) {
+      actions.clearFileSelections(filePath);
+    }
+    onExpandFileContext(filePath, source);
+  }, [onExpandFileContext, commitModeActive, actions]);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -571,40 +587,78 @@ export function GitDiffPanel({
           </div>
         ) : (
           <>
-            {file.chunks.map((chunk, i) => {
-              if (isTruncated) {
-                let linesBefore = 0;
-                for (let j = 0; j < i; j++) linesBefore += file.chunks[j].changes.length;
-                if (linesBefore >= MAX_LINES_BEFORE_TRUNCATE) return null;
-              }
-              const totalChanges = chunk.changes.filter(c => c.type === 'add' || c.type === 'del').length;
-              const commitModeForHunk = commitModeActive && entry.category === 'unstaged' ? {
-                chunkIndex: i,
-                chunkSelection: commitMode.selections.get(filePath)?.get(i),
-                totalChanges,
-                onToggleChunk: () => actions.toggleChunk(filePath, i, totalChanges),
-                onToggleLine: (ci: number) => actions.toggleLine(filePath, i, ci),
-                onRevertChunk: async () => {
+            {(() => {
+              const showExpand = !!onExpandFileContext && !isBinary && !isNew && !isDeleted && file.chunks.length > 0;
+              const expandFileKey = `${entry.category}:${filePath}`;
+              const isExpandLoading = expandingFiles?.has(expandFileKey) ?? false;
+              const handleExpand = showExpand ? () => handleExpandFileContext(filePath, entry.category) : undefined;
+
+              return file.chunks.map((chunk, i) => {
+                if (isTruncated) {
+                  let linesBefore = 0;
+                  for (let j = 0; j < i; j++) linesBefore += file.chunks[j].changes.length;
+                  if (linesBefore >= MAX_LINES_BEFORE_TRUNCATE) return null;
+                }
+                const totalChanges = chunk.changes.filter(c => c.type === 'add' || c.type === 'del').length;
+                const commitModeForHunk = commitModeActive && entry.category === 'unstaged' ? {
+                  chunkIndex: i,
+                  chunkSelection: commitMode.selections.get(filePath)?.get(i),
+                  totalChanges,
+                  onToggleChunk: () => actions.toggleChunk(filePath, i, totalChanges),
+                  onToggleLine: (ci: number) => actions.toggleLine(filePath, i, ci),
+                  onRevertChunk: async () => {
+                    await actions.discardChunk(currentSessionId, filePath, i, totalChanges);
+                    onRefresh();
+                  },
+                } : undefined;
+                const onRevertHunk = !commitModeActive && entry.category === 'unstaged' ? async () => {
                   await actions.discardChunk(currentSessionId, filePath, i, totalChanges);
                   onRefresh();
-                },
-              } : undefined;
-              const onRevertHunk = !commitModeActive && entry.category === 'unstaged' ? async () => {
-                await actions.discardChunk(currentSessionId, filePath, i, totalChanges);
-                onRefresh();
-              } : undefined;
-              return (
-                <DiffHunk
-                  key={i}
-                  chunk={chunk}
-                  theme={theme}
-                  searchQuery={searchLower || undefined}
-                  commitMode={commitModeForHunk}
-                  onRevertHunk={onRevertHunk}
-                  wordWrap={wordWrap}
-                />
-              );
-            })}
+                } : undefined;
+
+                const elements = [];
+
+                // Expand row above first hunk
+                if (showExpand && i === 0 && chunk.newStart > 1) {
+                  elements.push(
+                    <DiffExpandRow key={`expand-top-${i}`} hiddenLines={chunk.newStart - 1} onExpand={handleExpand!} isLoading={isExpandLoading} theme={theme} position="top" />
+                  );
+                }
+
+                // Expand row between hunks
+                if (showExpand && i > 0) {
+                  const prevChunk = file.chunks[i - 1];
+                  const prevEnd = prevChunk.newStart + prevChunk.newLines;
+                  const gap = chunk.newStart - prevEnd;
+                  if (gap > 0) {
+                    elements.push(
+                      <DiffExpandRow key={`expand-between-${i}`} hiddenLines={gap} onExpand={handleExpand!} isLoading={isExpandLoading} theme={theme} position="between" />
+                    );
+                  }
+                }
+
+                elements.push(
+                  <DiffHunk
+                    key={i}
+                    chunk={chunk}
+                    theme={theme}
+                    searchQuery={searchLower || undefined}
+                    commitMode={commitModeForHunk}
+                    onRevertHunk={onRevertHunk}
+                    wordWrap={wordWrap}
+                  />
+                );
+
+                // Expand row after last hunk
+                if (showExpand && i === file.chunks.length - 1) {
+                  elements.push(
+                    <DiffExpandRow key={`expand-bottom-${i}`} hiddenLines={0} onExpand={handleExpand!} isLoading={isExpandLoading} theme={theme} position="bottom" />
+                  );
+                }
+
+                return elements;
+              });
+            })()}
             {isTruncated && (
               <div style={{ padding: '8px 12px', textAlign: 'center' }}>
                 <button
@@ -1010,6 +1064,8 @@ export function GitDiffPanel({
                         onRefresh();
                       } : undefined}
                       onOpenInExplorer={makeExplorerHandler(filePath, !!file.deleted)}
+                      onExpandContext={onExpandFileContext ? () => handleExpandFileContext(filePath, 'unstaged') : undefined}
+                      isExpandLoading={expandingFiles?.has(`unstaged:${filePath}`) ?? false}
                     />
                   );
                 })}
@@ -1020,7 +1076,7 @@ export function GitDiffPanel({
                 {sectionHeader('staged', commitModeActive ? 'Already Staged' : 'Staged Changes', filteredStaged.length, filteredUnstaged.length > 0)}
                 {!collapsedSections.has('staged') && filteredStaged.map((file, i) => {
                   const filePath = file.to === '/dev/null' ? (file.from ?? '') : (file.to ?? '');
-                  return <DiffFileSection key={`staged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} wordWrap={wordWrap} onOpenInExplorer={makeExplorerHandler(filePath, !!file.deleted)} />;
+                  return <DiffFileSection key={`staged-${i}`} file={file} theme={theme} defaultExpanded={defaultExpanded} collapseAllKey={collapseAllKey} searchQuery={searchLower || undefined} wordWrap={wordWrap} onOpenInExplorer={makeExplorerHandler(filePath, !!file.deleted)} onExpandContext={onExpandFileContext ? () => handleExpandFileContext(filePath, 'staged') : undefined} isExpandLoading={expandingFiles?.has(`staged:${filePath}`) ?? false} />;
                 })}
               </div>
             )}

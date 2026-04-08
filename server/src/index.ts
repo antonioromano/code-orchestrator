@@ -25,7 +25,7 @@ import { setupSocketHandler } from './socket/handler.js';
 import { createAuthMiddleware } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.ARGUS_PORT || process.env.PORT) || 5400;
+const PORT = Number(process.env.ARGUS_PORT || process.env.PORT) || 5401;
 const dataDir = (process.env.ARGUS_DATA_DIR || process.env.DATA_DIR)
   ? path.resolve(process.env.ARGUS_DATA_DIR || process.env.DATA_DIR || '')
   : path.resolve(__dirname, '..', 'data');
@@ -34,7 +34,7 @@ const app = express();
 const httpServer = createServer(app);
 
 const corsOrigins = [
-  'http://localhost:5173',
+  'http://localhost:5402',
   `http://localhost:${PORT}`,
   ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
 ];
