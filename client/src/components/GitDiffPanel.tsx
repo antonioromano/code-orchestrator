@@ -1372,6 +1372,7 @@ export function GitDiffPanel({
               onClearAll={actions.clearAll}
               hasOnlyUntrackedSelected={hasOnlyUntrackedSelected}
               onRefresh={onRefresh}
+              onCommitSuccess={() => setSheetOpen(false)}
             />
           </div>
         </>

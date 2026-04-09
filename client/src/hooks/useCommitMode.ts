@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { api } from '../services/api.js';
 import type { PatchSelectionRequest } from '@remote-orchestrator/shared';
 
@@ -58,8 +58,8 @@ export interface CommitModeActions {
   clearFileSelections: (filePath: string) => void;
   setCommitMessage: (msg: string) => void;
   setIsAmend: (amend: boolean) => void;
-  stageAndCommit: (sessionId: string, fileMetas: FileMeta[], untrackedFiles: string[]) => Promise<void>;
-  stageCommitAndPush: (sessionId: string, fileMetas: FileMeta[], untrackedFiles: string[]) => Promise<void>;
+  stageAndCommit: (sessionId: string, fileMetas: FileMeta[], untrackedFiles: string[]) => Promise<boolean>;
+  stageCommitAndPush: (sessionId: string, fileMetas: FileMeta[], untrackedFiles: string[]) => Promise<boolean>;
   discardSelected: (sessionId: string, fileMetas: FileMeta[]) => Promise<void>;
   discardLine: (sessionId: string, filePath: string, chunkIndex: number, changeIndex: number) => Promise<void>;
   discardChunk: (sessionId: string, filePath: string, chunkIndex: number, totalChanges: number) => Promise<void>;
@@ -119,6 +119,13 @@ export function useCommitMode(): UseCommitModeResult {
   useEffect(() => { stateRef.current = state; });
 
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up undo timer on unmount
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    };
+  }, []);
 
   const toggleCommitMode = useCallback(() => {
     setState(prev => {
@@ -271,6 +278,7 @@ export function useCommitMode(): UseCommitModeResult {
   const notifyDiffRefreshed = useCallback(() => {
     setState(prev => {
       if (!prev.isActive || prev.selections.size === 0) return prev;
+      if (prev.status !== 'idle') return prev; // don't flag stale during commit/staging
       return { ...prev, hasStaleDiff: true };
     });
   }, []);
@@ -326,7 +334,7 @@ export function useCommitMode(): UseCommitModeResult {
     fileMetas: FileMeta[],
     untrackedFiles: string[],
     shouldPush = false,
-  ) => {
+  ): Promise<boolean> => {
     setState(prev => ({ ...prev, status: 'staging', errorMessage: null }));
 
     const { selections, commitMessage, isAmend } = stateRef.current;
@@ -338,7 +346,7 @@ export function useCommitMode(): UseCommitModeResult {
       const result = await api.stagePatch(sessionId, selection);
       if (!result.success) {
         setState(prev => ({ ...prev, status: 'error', errorMessage: result.error ?? 'Stage failed' }));
-        return;
+        return false;
       }
     }
 
@@ -351,7 +359,7 @@ export function useCommitMode(): UseCommitModeResult {
       const result = await api.stagePatch(sessionId, { filePath, source: 'unstaged', chunks: [] });
       if (!result.success) {
         setState(prev => ({ ...prev, status: 'error', errorMessage: result.error ?? 'Stage file failed' }));
-        return;
+        return false;
       }
     }
 
@@ -360,7 +368,7 @@ export function useCommitMode(): UseCommitModeResult {
     const commitResult = await api.gitCommit(sessionId, { message: commitMessage, amend: isAmend });
     if (!commitResult.success) {
       setState(prev => ({ ...prev, status: 'error', errorMessage: commitResult.error ?? 'Commit failed' }));
-      return;
+      return false;
     }
 
     if (shouldPush) {
@@ -368,14 +376,15 @@ export function useCommitMode(): UseCommitModeResult {
       const pushResult = await api.gitPush(sessionId);
       if (!pushResult.success) {
         setState(prev => ({ ...prev, status: 'error', errorMessage: pushResult.error ?? 'Push failed' }));
-        return;
+        return false;
       }
     }
 
-    // Success: exit commit mode
+    // Success: keep commit mode active for iterative workflow
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setState(prev => ({
       ...prev,
-      isActive: false,
+      isActive: true,
       selections: new Map(),
       status: 'idle',
       errorMessage: null,
@@ -384,7 +393,12 @@ export function useCommitMode(): UseCommitModeResult {
       undoEntry: null,
       hasStaleDiff: false,
     }));
-  }, []);
+
+    // Refresh git info (fire-and-forget) so Amend prefill shows the correct message
+    loadGitInfo(sessionId);
+
+    return true;
+  }, [loadGitInfo]);
 
   const stageCommitAndPush = useCallback(async (
     sessionId: string,
@@ -438,7 +452,7 @@ export function useCommitMode(): UseCommitModeResult {
         setState(prev => ({ ...prev, undoEntry: null }));
       }, 30_000);
     }
-  }, [state]);
+  }, []);
 
   const discardLine = useCallback(async (sessionId: string, filePath: string, chunkIndex: number, changeIndex: number) => {
     // Guard against concurrent operations
@@ -517,17 +531,20 @@ export function useCommitMode(): UseCommitModeResult {
     setState(prev => ({ ...prev, undoEntry: null }));
   }, []);
 
-  // Derived values
-  let selectedLineCount = 0;
-  let selectedFileCount = 0;
-  for (const [, fileSelection] of state.selections) {
-    let fileLines = 0;
-    for (const [, chunkSel] of fileSelection) fileLines += chunkSel.size;
-    if (fileLines > 0) {
-      selectedLineCount += fileLines;
-      selectedFileCount++;
+  // Derived values — memoized to avoid re-iteration on non-selection state changes
+  const { selectedLineCount, selectedFileCount } = useMemo(() => {
+    let lineCount = 0;
+    let fileCount = 0;
+    for (const [, fileSelection] of state.selections) {
+      let fileLines = 0;
+      for (const [, chunkSel] of fileSelection) fileLines += chunkSel.size;
+      if (fileLines > 0) {
+        lineCount += fileLines;
+        fileCount++;
+      }
     }
-  }
+    return { selectedLineCount: lineCount, selectedFileCount: fileCount };
+  }, [state.selections]);
 
   const canCommit =
     (selectedLineCount > 0 || state.selections.size > 0) &&

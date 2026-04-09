@@ -158,21 +158,53 @@ export function useEphemeralTerminal(
     };
     requestAnimationFrame(trySpawn);
 
+    // Full refit: fit, refresh canvas, emit resize, re-apply textarea fix.
+    // Used by terminal:refit handler (fires after layout changes settle).
+    const doFit = () => {
+      if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+        const prevCols = terminal.cols;
+        const prevRows = terminal.rows;
+        fitAddon.fit();
+        terminal.refresh(0, terminal.rows - 1);
+        if (terminal.cols !== prevCols || terminal.rows !== prevRows) {
+          socket.emit('ephemeral:resize', { id, cols: terminal.cols, rows: terminal.rows });
+        }
+        // Re-apply textarea fix in case xterm re-synced while hidden
+        const ta2 = container.querySelector<HTMLElement>('.xterm-helper-textarea');
+        if (ta2) applyTextareaFix(ta2);
+      }
+    };
+
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const resizeObserver = new ResizeObserver(() => {
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         if (container.offsetWidth > 0 && container.offsetHeight > 0) {
           fitAddon.fit();
+          // No terminal.refresh() here — avoid per-frame cost during drag.
+          // The terminal:refit event fires after drag ends and calls doFit().
           socket.emit('ephemeral:resize', { id, cols: terminal.cols, rows: terminal.rows });
         }
       }, 100);
     });
     resizeObserver.observe(container);
 
+    // Re-fit after layout changes (DnD, resize divider release, tab switches).
+    // Matches the pattern from useTerminal.ts for session terminals.
+    const handleRefit = () => {
+      if (cancelled) return;
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (cancelled) return;
+        doFit();
+      }, 50);
+    };
+    window.addEventListener('terminal:refit', handleRefit);
+
     return () => {
       cancelled = true;
       if (resizeTimer) clearTimeout(resizeTimer);
+      window.removeEventListener('terminal:refit', handleRefit);
       resizeObserver.disconnect();
       (container as ContainerWithObserver)._textareaObserver?.disconnect();
       onDataDisposable.dispose();
