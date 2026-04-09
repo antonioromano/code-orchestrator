@@ -14,6 +14,7 @@ interface CommitBarProps {
   // Used to detect "untracked-only" selection to disable Discard
   hasOnlyUntrackedSelected: boolean;
   onRefresh?: () => void;
+  onCommitSuccess?: () => void;
 }
 
 export function CommitBar({
@@ -26,6 +27,7 @@ export function CommitBar({
   onClearAll,
   hasOnlyUntrackedSelected,
   onRefresh,
+  onCommitSuccess,
 }: CommitBarProps) {
   const { commitMode, actions, selectedLineCount, selectedFileCount, canCommit } = commitModeResult;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -34,7 +36,8 @@ export function CommitBar({
   const statusLabel = commitMode.status === 'staging' ? 'Staging…' : commitMode.status === 'committing' ? 'Committing…' : null;
 
   const handleCommitAndPush = async () => {
-    await actions.stageCommitAndPush(sessionId, fileMetas, untrackedFiles);
+    const success = await actions.stageCommitAndPush(sessionId, fileMetas, untrackedFiles);
+    if (success) onCommitSuccess?.();
     onRefresh?.();
   };
 
@@ -49,7 +52,8 @@ export function CommitBar({
   }, [commitMode.commitMessage]);
 
   const handleCommit = async () => {
-    await actions.stageAndCommit(sessionId, fileMetas, untrackedFiles);
+    const success = await actions.stageAndCommit(sessionId, fileMetas, untrackedFiles);
+    if (success) onCommitSuccess?.();
     onRefresh?.();
   };
 
