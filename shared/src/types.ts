@@ -65,6 +65,7 @@ export interface ClientToServerEvents {
   'session:leave': (sessionId: string) => void;
   'session:input': (payload: { sessionId: string; data: string }) => void;
   'session:resize': (payload: { sessionId: string; cols: number; rows: number }) => void;
+  'session:clear-buffer': (sessionId: string) => void;
   // Ephemeral terminals (Explorer view only — not persisted, not in session list)
   'ephemeral:spawn': (payload: { id: string; cwd: string }) => void;
   'ephemeral:input': (payload: { id: string; data: string }) => void;
@@ -197,6 +198,18 @@ export interface GitCheckoutRequest {
 export interface GitCreateBranchRequest {
   name: string;
   from?: string;
+}
+
+export interface GitPullAndBranchRequest {
+  branchName: string;
+  baseBranch?: string;
+}
+
+export interface GitPullAndBranchResponse {
+  success: boolean;
+  error?: string;
+  baseBranch?: string;
+  newBranch?: string;
 }
 
 // Git file status types (for Explorer tree indicators)

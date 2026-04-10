@@ -131,6 +131,7 @@ function AppInner() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [cloneModalState, setCloneModalState] = useState<{ folderPath: string; agentType?: string } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingRestartId, setPendingRestartId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('sessions');
   const socket = useSocket();
   const socketConnected = useSocketStatus();
@@ -348,9 +349,20 @@ function AppInner() {
     setPendingDeleteId(id);
   }, []);
 
-  const handleRestart = useCallback(async (id: string) => {
-    await api.restartSession(id);
-  }, []);
+  const handleRestart = useCallback((id: string) => {
+    const session = sessions.find(s => s.id === id);
+    if (!session || session.status === 'exited') {
+      api.restartSession(id);
+    } else {
+      setPendingRestartId(id);
+    }
+  }, [sessions]);
+
+  const handleRestartConfirm = useCallback(async () => {
+    if (!pendingRestartId) return;
+    await api.restartSession(pendingRestartId);
+    setPendingRestartId(null);
+  }, [pendingRestartId]);
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!pendingDeleteId) return;
@@ -946,6 +958,84 @@ function AppInner() {
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
               >
                 Close Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm restart dialog */}
+      {pendingRestartId && (
+        <div
+          onClick={() => setPendingRestartId(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 'var(--z-modal-top)' as unknown as number,
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="restart-dialog-title"
+            aria-describedby="restart-dialog-desc"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--color-bg-modal)',
+              borderRadius: 'var(--radius-xl)',
+              padding: 'var(--space-6)',
+              width: '360px',
+              maxWidth: '90vw',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+              border: '1px solid var(--color-border-base)',
+            }}
+          >
+            <h3 id="restart-dialog-title" style={{ margin: '0 0 8px', fontSize: 'var(--text-xl)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              Restart Session?
+            </h3>
+            <p id="restart-dialog-desc" style={{ margin: '0 0 20px', fontSize: 'var(--text-md)', color: 'var(--color-text-secondary)' }}>
+              The running session will be terminated and restarted with the same configuration.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setPendingRestartId(null)}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 'var(--text-md)',
+                  border: '1px solid var(--color-border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'transparent',
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'background var(--transition-fast)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-surface)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                Cancel
+              </button>
+              <button
+                autoFocus
+                onClick={handleRestartConfirm}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 'var(--text-md)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-accent)',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  transition: 'opacity var(--transition-fast)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+              >
+                Restart
               </button>
             </div>
           </div>

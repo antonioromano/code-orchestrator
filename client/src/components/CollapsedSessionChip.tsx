@@ -28,8 +28,13 @@ export function CollapsedSessionChip({ session, onUncollapse }: CollapsedSession
           cursor: 'pointer',
           fontFamily: 'inherit',
           transition: 'background var(--transition-fast), box-shadow var(--transition-fast)',
-          boxShadow: session.status !== 'exited'
-            ? `0 0 6px ${statusColor}33`
+          boxShadow: session.status === 'waiting'
+            ? undefined  // let animation control it
+            : session.status !== 'exited'
+              ? `0 0 6px ${statusColor}33`
+              : undefined,
+          animation: session.status === 'waiting'
+            ? 'waiting-breathe 1.4s ease-in-out infinite'
             : undefined,
           flexShrink: 0,
           whiteSpace: 'nowrap',
@@ -41,7 +46,7 @@ export function CollapsedSessionChip({ session, onUncollapse }: CollapsedSession
           e.currentTarget.style.background = 'var(--color-bg-elevated)';
         }}
       >
-        <StatusDot status={session.status} pulse={session.status === 'running'} size={7} />
+        <StatusDot status={session.status} pulse={session.status === 'running' || session.status === 'waiting'} size={7} />
         <span
           style={{
             fontSize: 'var(--text-sm)',

@@ -33,6 +33,16 @@ if (typeof document !== 'undefined' && !document.getElementById('skeleton-keyfra
       0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
       50%       { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
     }
+    @keyframes waiting-breathe {
+      0%, 100% {
+        box-shadow: 0 0 4px rgba(245, 158, 11, 0.15);
+        border-color: rgba(245, 158, 11, 0.4);
+      }
+      50% {
+        box-shadow: 0 0 18px 4px rgba(245, 158, 11, 0.6);
+        border-color: rgba(245, 158, 11, 1);
+      }
+    }
   `;
   document.head.appendChild(style);
 }
