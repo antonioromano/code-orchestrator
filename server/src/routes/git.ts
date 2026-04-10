@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { SessionManager } from '../services/SessionManager.js';
 import type { GitService } from '../services/GitService.js';
-import type { PatchSelectionRequest, CommitRequest, GitCheckoutRequest, GitCreateBranchRequest, DiffFileRequest } from '@remote-orchestrator/shared';
+import type { PatchSelectionRequest, CommitRequest, GitCheckoutRequest, GitCreateBranchRequest, DiffFileRequest, GitPullAndBranchRequest } from '@remote-orchestrator/shared';
 
 export function createGitRoutes(manager: SessionManager, gitService: GitService): Router {
   const router = Router();
@@ -246,6 +246,23 @@ export function createGitRoutes(manager: SessionManager, gitService: GitService)
     }
 
     const result = await gitService.createBranch(session.folderPath, name, from);
+    res.status(result.success ? 200 : 400).json(result);
+  });
+
+  router.post('/sessions/:id/git-pull-and-branch', async (req, res) => {
+    const session = manager.getSessionInfo(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const { branchName, baseBranch } = req.body as GitPullAndBranchRequest;
+    if (!branchName?.trim()) {
+      res.status(400).json({ success: false, error: 'Branch name required' });
+      return;
+    }
+
+    const result = await gitService.pullAndBranch(session.folderPath, branchName, baseBranch);
     res.status(result.success ? 200 : 400).json(result);
   });
 

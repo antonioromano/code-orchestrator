@@ -131,6 +131,11 @@ export function setupSocketHandler(
       ephemeralManager.kill(id);
     });
 
+    socket.on('session:clear-buffer', (sessionId: string) => {
+      if (!manager.getSession(sessionId)) return;
+      manager.clearBuffer(sessionId);
+    });
+
     socket.on('disconnect', () => {
       console.log(`Client disconnected: ${socket.id}`);
       // Clean up dimensions for all sessions this socket was part of

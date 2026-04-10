@@ -233,8 +233,8 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             </Tooltip>
           )}
 
-          {onRestart && session.status === 'exited' && (
-            <Tooltip content="Restart session" position="top">
+          {onRestart && (
+            <Tooltip content={session.status === 'exited' ? 'Restart session' : 'Restart session (kills current)'} position="top">
               <button
                 onClick={() => onRestart(session.id)}
                 className="hover-success"

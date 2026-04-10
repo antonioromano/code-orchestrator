@@ -191,6 +191,20 @@ export function useTerminal(
     };
     socket.on('session:output', handleOutput);
 
+    // Intercept Cmd+K/L (Mac) or Ctrl+K/L (non-Mac) to clear terminal
+    terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      const modifier = isMac ? event.metaKey : event.ctrlKey;
+      if (modifier && (event.key === 'k' || event.key === 'K' || event.key === 'l' || event.key === 'L')) {
+        if (event.type === 'keydown') {
+          terminal.clear();
+          socket.emit('session:clear-buffer', sessionId);
+        }
+        return false;
+      }
+      return true;
+    });
+
     // Terminal -> Socket
     const onDataDisposable = terminal.onData((data) => {
       socket.emit('session:input', { sessionId, data });

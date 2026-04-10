@@ -595,6 +595,13 @@ cmd_remove() {
   echo "  rm -rf $PROJECT_ROOT      # remove the repo itself"
 }
 
+cmd_restart() {
+  echo "Restarting Argus..."
+  cmd_stop
+  sleep 1
+  cmd_start "$@"
+}
+
 cmd_help() {
   echo "Argus v$(get_package_version)"
   echo ""
@@ -606,6 +613,7 @@ cmd_help() {
   echo ""
   echo "  Both 'run' and 'start' accept --force (-f) to kill any existing"
   echo "  process on the port before starting."
+  echo "  restart   Stop and start Argus (useful after agent updates)"
   echo "  stop      Stop the running Argus daemon"
   echo "  status    Show whether Argus is running"
   echo "  logs      Tail the Argus log output"
@@ -644,6 +652,7 @@ COMMAND="${1:-}"
 case "$COMMAND" in
   run)     shift; cmd_run "$@" ;;
   start)   shift; cmd_start "$@" ;;
+  restart) shift; cmd_restart "$@" ;;
   stop)    cmd_stop ;;
   status)  cmd_status ;;
   logs)    cmd_logs ;;

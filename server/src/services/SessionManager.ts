@@ -218,6 +218,11 @@ export class SessionManager {
     return this.sessions.get(id)?.outputBuffer;
   }
 
+  clearBuffer(id: string): void {
+    const session = this.sessions.get(id);
+    if (session) session.outputBuffer = '';
+  }
+
   writeToSession(id: string, data: string): void {
     const session = this.sessions.get(id);
     if (!session) throw new Error(`Session ${id} not found`);

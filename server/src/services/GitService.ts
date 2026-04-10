@@ -446,6 +446,64 @@ export class GitService {
     }
   }
 
+  async getDefaultBranch(folderPath: string): Promise<string> {
+    try {
+      const output = await execGit(['symbolic-ref', 'refs/remotes/origin/HEAD', '--short'], folderPath);
+      const branch = output.trim().replace('origin/', '');
+      if (branch) return branch;
+    } catch { /* ignore */ }
+
+    const { branches } = await this.getBranches(folderPath);
+    if (branches.includes('main')) return 'main';
+    if (branches.includes('master')) return 'master';
+    return 'main';
+  }
+
+  async pullAndBranch(
+    folderPath: string,
+    branchName: string,
+    baseBranch?: string,
+  ): Promise<{ success: boolean; error?: string; baseBranch?: string; newBranch?: string }> {
+    try {
+      if (!branchName.trim() || /\s/.test(branchName)) {
+        return { success: false, error: 'Branch name cannot contain spaces' };
+      }
+      try {
+        await execGit(['check-ref-format', '--branch', branchName], folderPath);
+      } catch {
+        return { success: false, error: `Invalid branch name: "${branchName}"` };
+      }
+
+      const resolvedBase = baseBranch || await this.getDefaultBranch(folderPath);
+
+      if (await this.hasChanges(folderPath)) {
+        return { success: false, error: 'You have uncommitted changes. Please commit or stash them first.' };
+      }
+
+      await execGitWithStderr(['fetch', 'origin'], folderPath);
+
+      const checkout = await this.checkoutBranch(folderPath, resolvedBase);
+      if (!checkout.success) {
+        return { success: false, error: `Failed to checkout ${resolvedBase}: ${checkout.error}` };
+      }
+
+      const pullResult = await this.pull(folderPath);
+      if (!pullResult.success) {
+        return { success: false, error: `Failed to pull ${resolvedBase}: ${pullResult.error}` };
+      }
+
+      const create = await this.createBranch(folderPath, branchName);
+      if (!create.success) {
+        return { success: false, error: `Failed to create branch: ${create.error}` };
+      }
+
+      return { success: true, baseBranch: resolvedBase, newBranch: branchName };
+    } catch (err) {
+      const e = err as { message?: string; stderr?: string };
+      return { success: false, error: e.stderr || e.message || 'Pull and branch failed' };
+    }
+  }
+
   async getFileStatuses(folderPath: string): Promise<GitFileStatusResponse> {
     const isRepo = await this.isGitRepo(folderPath);
     if (!isRepo) {

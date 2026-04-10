@@ -134,6 +134,9 @@ export function GitDiffPanel({
   const [creatingBranch, setCreatingBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [branchError, setBranchError] = useState('');
+  const [showPullAndBranch, setShowPullAndBranch] = useState(false);
+  const [pullBranchName, setPullBranchName] = useState('');
+  const [pullBaseBranch, setPullBaseBranch] = useState('');
 
   const commitModeResult = useCommitMode();
   const { commitMode, actions, selectedFileCount } = commitModeResult;
@@ -424,6 +427,29 @@ export function GitDiffPanel({
     }
   }
 
+  async function handlePullAndBranch() {
+    const name = pullBranchName.trim();
+    if (!name || branchLoading) return;
+    setBranchLoading(true);
+    setBranchError('');
+    try {
+      const result = await api.gitPullAndBranch(currentSessionId, name, pullBaseBranch || undefined);
+      if (result.success) {
+        setShowPullAndBranch(false);
+        setPullBranchName('');
+        setPullBaseBranch('');
+        await loadBranches();
+        onRefresh();
+      } else {
+        setBranchError(result.error ?? 'Pull and branch failed');
+      }
+    } catch (err) {
+      setBranchError(err instanceof Error ? err.message : 'Pull and branch failed');
+    } finally {
+      setBranchLoading(false);
+    }
+  }
+
   const headerBtnStyle = {
     background: 'none',
     border: 'none',
@@ -688,10 +714,10 @@ export function GitDiffPanel({
     fontFamily: 'var(--font-mono)',
   };
 
-  const branchRow = branches.length > 0 || creatingBranch ? (
+  const branchRow = branches.length > 0 || creatingBranch || showPullAndBranch ? (
     <div style={{ padding: '4px 8px 4px', flexShrink: 0, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
-        {!creatingBranch ? (
+        {!creatingBranch && !showPullAndBranch ? (
           <>
             <select
               value={currentBranch}
@@ -734,6 +760,43 @@ export function GitDiffPanel({
               title="Create new branch"
               style={{ ...headerBtnStyle, flexShrink: 0 }}
             >+</button>
+            <button
+              onClick={() => {
+                setShowPullAndBranch(true);
+                setPullBranchName('');
+                setPullBaseBranch(branches.find(b => b === 'main' || b === 'master') || currentBranch);
+                setBranchError('');
+              }}
+              disabled={branchLoading}
+              title="Pull latest & create branch"
+              style={{ ...headerBtnStyle, flexShrink: 0, fontSize: '12px' }}
+            >↓+</button>
+          </>
+        ) : showPullAndBranch ? (
+          <>
+            <input
+              autoFocus
+              value={pullBranchName}
+              onChange={e => setPullBranchName(e.target.value)}
+              placeholder="new-branch-name"
+              disabled={branchLoading}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); handlePullAndBranch(); }
+                if (e.key === 'Escape') { setShowPullAndBranch(false); setBranchError(''); }
+              }}
+              style={{ ...inputStyle, minWidth: 0 }}
+            />
+            <select
+              value={pullBaseBranch}
+              onChange={e => setPullBaseBranch(e.target.value)}
+              disabled={branchLoading}
+              title="Base branch"
+              style={{ ...inputStyle, maxWidth: '100px', flexShrink: 0 }}
+            >
+              {branches.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <button onClick={handlePullAndBranch} disabled={branchLoading} title="Confirm" style={{ ...headerBtnStyle, flexShrink: 0 }}>✓</button>
+            <button onClick={() => { setShowPullAndBranch(false); setBranchError(''); }} title="Cancel" style={{ ...headerBtnStyle, flexShrink: 0 }}>✕</button>
           </>
         ) : (
           <>
