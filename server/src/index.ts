@@ -33,16 +33,32 @@ const dataDir = (process.env.ARGUS_DATA_DIR || process.env.DATA_DIR)
 const app = express();
 const httpServer = createServer(app);
 
-const corsOrigins = [
+const staticCorsOrigins = [
   'http://localhost:5402',
   `http://localhost:${PORT}`,
   ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
 ];
-app.use(cors({ origin: corsOrigins }));
+
+// Dynamic CORS: allow static origins + whatever the active ngrok tunnel URL is.
+// ngrokService is created below; the function captures it by reference so it sees
+// the live publicUrl without needing a restart.
+let ngrokService: NgrokService;
+const corsOriginFn = (
+  origin: string | undefined,
+  cb: (err: Error | null, allow?: boolean) => void,
+) => {
+  if (!origin) return cb(null, true); // same-origin / non-browser requests
+  if (staticCorsOrigins.includes(origin)) return cb(null, true);
+  const ngrokUrl = ngrokService?.getStatus().publicUrl;
+  if (ngrokUrl && origin === ngrokUrl) return cb(null, true);
+  cb(null, false);
+};
+
+app.use(cors({ origin: corsOriginFn }));
 app.use(express.json());
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: { origin: corsOrigins },
+  cors: { origin: corsOriginFn },
 });
 
 // Config store & agent registry
@@ -63,8 +79,8 @@ authService.setIo(io);
 // Auth middleware — before routes
 app.use(createAuthMiddleware(authService));
 
-// Ngrok service
-const ngrokService = new NgrokService();
+// Ngrok service (assigned to the var declared above for dynamic CORS)
+ngrokService = new NgrokService();
 ngrokService.setIo(io);
 ngrokService.getAuthRequired = () => authService.enabled;
 ngrokService.onDisconnect = () => authService.clearAuth();

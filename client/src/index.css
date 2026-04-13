@@ -32,7 +32,7 @@ body {
 
 #root {
   width: 100%;
-  height: calc(100vh - env(safe-area-inset-top, 0px));
+  height: calc(100dvh - env(safe-area-inset-top, 0px));
 }
 
 ::-webkit-scrollbar {
@@ -134,8 +134,20 @@ body {
   .terminal-panel {
     min-height: 440px !important;
     flex: none !important;
-    /* Disable browser native touch scroll so our custom handlers take over */
-    touch-action: none;
+  }
+
+  /* Mobile only shows one terminal at a time (auto-focus mode) — the
+     "unfocused" dim overlay serves no purpose here and can confuse tap
+     targets on iOS Safari. Remove it entirely on mobile. */
+  .terminal-panel::after {
+    display: none !important;
+  }
+
+  /* Native iOS scroll on xterm viewport — replaces the old JS touch handler */
+  .xterm-viewport {
+    -webkit-overflow-scrolling: touch; /* iOS momentum scroll */
+    overscroll-behavior: contain;      /* don't chain to page/background at edges */
+    touch-action: pan-y;               /* vertical pan only; taps still fall through */
   }
 
   /* Mobile terminal input toolbar */

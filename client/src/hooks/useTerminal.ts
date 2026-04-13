@@ -93,67 +93,6 @@ export function useTerminal(
 
     terminal.open(container);
 
-    // Mobile only: intercept touch events and translate to smooth pixel-level
-    // terminal scroll with momentum. On desktop, xterm.js handles wheel natively.
-    const isTouchDevice = navigator.maxTouchPoints > 0;
-    const viewport = container.querySelector('.xterm-viewport') as HTMLElement | null;
-    let touchLastY = 0;
-    let touchLastTime = 0;
-    let velocity = 0;
-    let momentumRaf = 0;
-
-    const stopMomentum = () => {
-      if (momentumRaf) {
-        cancelAnimationFrame(momentumRaf);
-        momentumRaf = 0;
-      }
-    };
-
-    const startMomentum = () => {
-      if (!viewport) return;
-      const friction = 0.95;
-      const step = () => {
-        velocity *= friction;
-        if (Math.abs(velocity) < 0.5) {
-          momentumRaf = 0;
-          return;
-        }
-        viewport.scrollTop += velocity;
-        momentumRaf = requestAnimationFrame(step);
-      };
-      momentumRaf = requestAnimationFrame(step);
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      stopMomentum();
-      touchLastY = e.touches[0].clientY;
-      touchLastTime = e.timeStamp;
-      velocity = 0;
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault(); // block the page from scrolling
-      if (!viewport) return;
-      const y = e.touches[0].clientY;
-      const now = e.timeStamp;
-      const delta = touchLastY - y; // positive = finger moves up = scroll down
-      const dt = now - touchLastTime || 16;
-      velocity = delta * (16 / dt); // normalize to ~per-frame velocity
-      viewport.scrollTop += delta;
-      touchLastY = y;
-      touchLastTime = now;
-    };
-
-    const onTouchEnd = () => {
-      startMomentum();
-    };
-
-    if (isTouchDevice && viewport) {
-      container.addEventListener('touchstart', onTouchStart, { passive: true });
-      container.addEventListener('touchmove', onTouchMove, { passive: false });
-      container.addEventListener('touchend', onTouchEnd, { passive: true });
-    }
-
     // Delay fit to allow container to settle, then report dimensions to server
     requestAnimationFrame(() => {
       if (container.offsetWidth > 0 && container.offsetHeight > 0) {
@@ -242,12 +181,6 @@ export function useTerminal(
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       window.removeEventListener('terminal:refit', handleRefit);
-      stopMomentum();
-      if (isTouchDevice) {
-        container.removeEventListener('touchstart', onTouchStart);
-        container.removeEventListener('touchmove', onTouchMove);
-        container.removeEventListener('touchend', onTouchEnd);
-      }
       onDataDisposable.dispose();
       socket.off('session:output', handleOutput);
       socket.off('connect', handleReconnect);

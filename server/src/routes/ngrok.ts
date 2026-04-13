@@ -5,6 +5,13 @@ import type { AuthService } from '../services/AuthService.js';
 export function createNgrokRoutes(ngrokService: NgrokService, authService: AuthService): Router {
   const router = Router();
   const serverPort = Number(process.env.ARGUS_PORT || process.env.PORT) || 5401;
+  // In production the server serves both API and client on serverPort.
+  // In dev the client runs on its own port (Vite default 5402) and proxies /api → serverPort.
+  // Forward ngrok to whichever port actually serves the UI to a browser.
+  const isProduction = process.env.NODE_ENV === 'production';
+  const defaultTunnelPort = isProduction
+    ? serverPort
+    : Number(process.env.CLIENT_PORT) || 5402;
 
   router.get('/status', (_req, res) => {
     res.json({ ...ngrokService.getStatus(), authRequired: authService.enabled });
@@ -23,7 +30,7 @@ export function createNgrokRoutes(ngrokService: NgrokService, authService: AuthS
     }
 
     try {
-      const port = typeof req.body?.port === 'number' ? req.body.port : serverPort;
+      const port = typeof req.body?.port === 'number' ? req.body.port : defaultTunnelPort;
       const publicUrl = await ngrokService.start(port);
       authService.setPassword(password);
       const token = authService.generateToken();

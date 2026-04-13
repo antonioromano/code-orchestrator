@@ -142,6 +142,14 @@ function AppInner() {
   const { config, updateConfig } = useConfig();
   const { getOrderedSessions, reorder } = useSessionOrder();
 
+  // Track mobile viewport — auto-focus mode is always active on mobile
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   // --- Folder state persistence caches (plain objects survive tab switches without triggering re-renders) ---
   // Using useState with lazy initializer to get a stable mutable Map that persists across renders.
   // These are intentionally mutated in-place (like refs) but passed as values to avoid lint warnings.
@@ -328,7 +336,8 @@ function AppInner() {
   }, []);
 
   const handleCreate = async (folderPath: string, name?: string, agentType?: string, flags?: string[]) => {
-    await createSession(folderPath, name, agentType, flags);
+    const session = await createSession(folderPath, name, agentType, flags);
+    if (isMobile) setFocusedSessionId(session.id);
   };
 
   const handleClone = useCallback((folderPath: string, agentType?: string) => {
@@ -336,7 +345,8 @@ function AppInner() {
   }, []);
 
   const handleCloneConfirm = async (folderPath: string, agentType: string, flags?: string[]) => {
-    await createSession(folderPath, undefined, agentType, flags);
+    const session = await createSession(folderPath, undefined, agentType, flags);
+    if (isMobile) setFocusedSessionId(session.id);
   };
 
   const handleSaveFlag = useCallback(async (agentId: string, flag: import('@remote-orchestrator/shared').AgentFlag) => {
@@ -372,6 +382,13 @@ function AppInner() {
     await deleteSession(pendingDeleteId);
     setPendingDeleteId(null);
   }, [pendingDeleteId, focusedSessionId, deleteSession]);
+
+  // On mobile, keep focus mode always active — auto-focus first session when none is focused
+  useEffect(() => {
+    if (isMobile && !focusedSessionId && sessions.length > 0) {
+      setFocusedSessionId(sessions[0].id);
+    }
+  }, [isMobile, focusedSessionId, sessions]);
 
   const handleFocus = useCallback((id: string) => {
     setFocusedSessionId(id);
