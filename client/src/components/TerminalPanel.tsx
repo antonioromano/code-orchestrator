@@ -51,6 +51,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
 
   const [mobileInput, setMobileInput] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     const types = Array.from(e.dataTransfer.types);
@@ -97,6 +98,9 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
     if (!text) return;
     socket.emit('session:input', { sessionId: session.id, data: text + '\r' });
     setMobileInput('');
+    // Refocus the input so the keyboard stays open for the next command.
+    // iOS honors .focus() from inside a click handler (user gesture context).
+    mobileInputRef.current?.focus();
   };
 
   const {
@@ -349,6 +353,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
               className="mobile-quickkey-btn"
               title={action.title}
               aria-label={action.title}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => socket.emit('session:input', { sessionId: session.id, data: action.data })}
             >
               {action.label}
@@ -357,8 +362,10 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
         </div>
         <div className="mobile-terminal-textrow">
           <input
+            ref={mobileInputRef}
             className="mobile-terminal-text-input"
             type="text"
+            enterKeyHint="send"
             aria-label="Type command"
             placeholder="Type command..."
             value={mobileInput}
@@ -374,7 +381,11 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             autoCapitalize="off"
             spellCheck={false}
           />
-          <button className="mobile-terminal-send-btn" onClick={handleMobileSend}>
+          <button
+            className="mobile-terminal-send-btn"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleMobileSend}
+          >
             Send
           </button>
         </div>
