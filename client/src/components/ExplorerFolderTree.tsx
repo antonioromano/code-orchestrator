@@ -233,6 +233,12 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
           <div
             key={entry.path}
             data-filepath={entry.path}
+            draggable={entry.isFile}
+            onDragStart={entry.isFile ? (e) => {
+              e.dataTransfer.setData('application/x-argus-path', entry.path);
+              e.dataTransfer.setData('text/plain', entry.path);
+              e.dataTransfer.effectAllowed = 'copy';
+            } : undefined}
             onClick={() => {
               if (entry.isFile) {
                 onFileSelect(entry.path, entry.ext);
