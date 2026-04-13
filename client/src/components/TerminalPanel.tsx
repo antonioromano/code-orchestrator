@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useCallback } from 'react';
+import { formatPathsForPty } from '../utils/pathFormat.js';
 import type { SessionInfo } from '@remote-orchestrator/shared';
 import type { Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
@@ -49,6 +50,47 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
   useTerminal(containerRef, { sessionId: session.id, socket, theme });
 
   const [mobileInput, setMobileInput] = useState('');
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    const types = Array.from(e.dataTransfer.types);
+    if (types.includes('application/x-argus-path') || types.includes('Files')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const paths: string[] = [];
+
+    const argusPath = e.dataTransfer.getData('application/x-argus-path');
+    if (argusPath) {
+      paths.push(argusPath);
+    } else if (e.dataTransfer.files.length > 0) {
+      for (const file of Array.from(e.dataTransfer.files)) {
+        paths.push(file.name);
+      }
+    } else {
+      const text = e.dataTransfer.getData('text/plain');
+      if (text) paths.push(text);
+    }
+
+    const data = formatPathsForPty(paths);
+    if (data) {
+      socket.emit('session:input', { sessionId: session.id, data });
+    }
+  }, [socket, session.id]);
 
   const handleMobileSend = () => {
     const text = mobileInput.trim();
@@ -261,13 +303,42 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
 
       <div
         ref={containerRef}
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         style={{
+          position: 'relative',
           flex: 1,
           minHeight: 0,
           padding: '4px',
           background: 'var(--color-bg-deepest)',
         }}
-      />
+      >
+        {isDragOver && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+            border: '2px dashed var(--color-accent)',
+            borderRadius: 'var(--radius-md)',
+            zIndex: 10,
+            pointerEvents: 'none',
+          }}>
+            <span style={{
+              color: 'var(--color-accent)',
+              fontSize: 'var(--text-sm)',
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 600,
+            }}>
+              Drop to paste path
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Mobile input toolbar — hidden on desktop via CSS */}
       <div className="mobile-terminal-input">
