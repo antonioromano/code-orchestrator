@@ -118,6 +118,23 @@ export function useEphemeralTerminal(
       (container as ContainerWithObserver)._textareaObserver = textareaObserver;
     }
 
+    terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      // Shift+Enter: send ESC+CR so Claude Code (if run inside) inserts a newline
+      if (
+        event.key === 'Enter' &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        if (event.type === 'keydown') {
+          socket.emit('ephemeral:input', { id, data: '\x1b\r' });
+        }
+        return false;
+      }
+      return true;
+    });
+
     // Wire up keyboard input immediately after open()
     const onDataDisposable = terminal.onData((data) => {
       socket.emit('ephemeral:input', { id, data });

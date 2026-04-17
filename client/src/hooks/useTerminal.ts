@@ -130,8 +130,22 @@ export function useTerminal(
     };
     socket.on('session:output', handleOutput);
 
-    // Intercept Cmd+K/L (Mac) or Ctrl+K/L (non-Mac) to clear terminal
     terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      // Shift+Enter: send ESC+CR so Claude Code inserts a newline
+      if (
+        event.key === 'Enter' &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        if (event.type === 'keydown') {
+          socket.emit('session:input', { sessionId, data: '\x1b\r' });
+        }
+        return false;
+      }
+
+      // Cmd+K/L (Mac) or Ctrl+K/L (non-Mac) clears the terminal
       const isMac = navigator.platform.toUpperCase().includes('MAC');
       const modifier = isMac ? event.metaKey : event.ctrlKey;
       if (modifier && (event.key === 'k' || event.key === 'K' || event.key === 'l' || event.key === 'L')) {
