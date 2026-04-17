@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Folder, FolderOpen, FileText, FileCode, FileJson, ChevronRight, ChevronDown, GitCommit } from 'lucide-react';
+import { Folder, FolderOpen, FileText, FileCode, FileJson, ChevronRight, ChevronDown, GitCommit, ExternalLink } from 'lucide-react';
 import type { DirectoryEntry, GitFileStatusCode } from '@remote-orchestrator/shared';
 import { InlineIconLink } from './primitives/index.js';
 import { api } from '../services/api.js';
@@ -16,6 +16,8 @@ interface ExplorerFolderTreeProps {
   selectedFilePath: string | null;
   gitStatusMap?: Record<string, GitFileStatusCode>;
   onOpenInDiff?: (fileName?: string) => void;
+  /** When provided, renders an "Open" icon on each row that opens the file/folder with the system default app. */
+  onOpenPath?: (entryPath: string, isFile: boolean) => void;
   /** Restore previously expanded paths (survives tab switches). */
   initialExpandedPaths?: Set<string>;
   /** Restore previously loaded tree data (survives tab switches). */
@@ -45,7 +47,7 @@ function getGitStatusColor(status: GitFileStatusCode | undefined): string | unde
   }
 }
 
-export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, selectedFilePath, gitStatusMap, onOpenInDiff, initialExpandedPaths, initialTreeData, onExpandedPathsChange, onTreeDataChange }: ExplorerFolderTreeProps) {
+export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, selectedFilePath, gitStatusMap, onOpenInDiff, onOpenPath, initialExpandedPaths, initialTreeData, onExpandedPathsChange, onTreeDataChange }: ExplorerFolderTreeProps) {
   const [treeData, setTreeDataRaw] = useState<Map<string, TreeNode>>(() => initialTreeData ?? new Map());
   const [expandedPaths, setExpandedPathsRaw] = useState<Set<string>>(() => initialExpandedPaths ?? new Set());
   const [isRootLoading, setIsRootLoading] = useState(() => !initialTreeData?.has(rootPath));
@@ -302,6 +304,17 @@ export function ExplorerFolderTree({ rootPath, onFileSelect, onFileDoubleClick, 
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
               {entry.name}
             </span>
+
+            {/* "Open with system default" — works for both files and folders */}
+            {onOpenPath && (
+              <InlineIconLink
+                icon={ExternalLink}
+                label={entry.isFile ? `Open ${entry.name}` : `Reveal ${entry.name} in Finder`}
+                onClick={() => onOpenPath(entry.path, entry.isFile)}
+                size={11}
+                opacity={0.6}
+              />
+            )}
 
             {/* "View in Diff" shortcut — shown for files with actual changes (not ignored) */}
             {entry.isFile && onOpenInDiff && gitStatus && gitStatus !== '!!' && (

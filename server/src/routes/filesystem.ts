@@ -244,6 +244,49 @@ export function createFilesystemRoutes(sessionManager: SessionManager): Router {
     res.json({ results, query });
   });
 
+  router.post('/open', express.json(), async (req, res) => {
+    const { sessionId, path: rawPath } = req.body as { sessionId?: string; path?: string };
+
+    if (!sessionId || !rawPath) {
+      res.status(400).json({ success: false, error: 'sessionId and path are required' });
+      return;
+    }
+    if (!path.isAbsolute(rawPath)) {
+      res.status(400).json({ success: false, error: 'invalid path' });
+      return;
+    }
+
+    const session = sessionManager.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ success: false, error: 'session not found' });
+      return;
+    }
+
+    const resolved = path.resolve(rawPath);
+    if (!resolved.startsWith(session.folderPath + path.sep) && resolved !== session.folderPath) {
+      res.status(403).json({ success: false, error: 'path is outside session working directory' });
+      return;
+    }
+
+    try {
+      await stat(resolved);
+    } catch {
+      res.status(404).json({ success: false, error: 'path does not exist' });
+      return;
+    }
+
+    const platform = process.platform;
+    const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'explorer' : 'xdg-open';
+
+    execFile(cmd, [resolved], (err) => {
+      if (err) {
+        res.status(500).json({ success: false, error: `failed to open: ${err.message}` });
+        return;
+      }
+      res.json({ success: true });
+    });
+  });
+
   router.post('/pick-folder', (_req, res) => {
     execFile('osascript', ['-e', 'POSIX path of (choose folder with prompt "Select project folder")'], (err, stdout) => {
       if (err) {

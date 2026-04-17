@@ -32,7 +32,7 @@ import dockerLang from 'react-syntax-highlighter/dist/esm/languages/prism/docker
 import makefileLang from 'react-syntax-highlighter/dist/esm/languages/prism/makefile';
 import { syntaxTheme } from '../utils/syntaxTheme';
 import { langFromPath } from '../utils/langFromPath';
-import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon, PanelLeft, PanelLeftClose, Terminal as TerminalIcon, GitCommit } from 'lucide-react';
+import { FolderOpen, FileText, File, FileCode, FileJson, RefreshCw, Copy, Check, Search, Link, BookOpen, Code, Pencil, Save, X as XIcon, PanelLeft, PanelLeftClose, Terminal as TerminalIcon, GitCommit, ExternalLink } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
 import type { SessionInfo, FileContentResponse, FileSearchResult, GitFileStatusCode, ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { ExplorerFolderTree } from './ExplorerFolderTree.js';
@@ -491,6 +491,13 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
     navigator.clipboard.writeText(filePath).then(() => showToast('File path copied'));
   }, [showToast]);
 
+  const handleOpenPath = useCallback((entryPath: string, isFile: boolean) => {
+    if (!selectedSessionId) return;
+    api.openPath(selectedSessionId, entryPath).catch((err: Error) => {
+      showToast(err.message || (isFile ? 'Failed to open file' : 'Failed to open folder'));
+    });
+  }, [selectedSessionId, showToast]);
+
   const handleCopyFilePath = useCallback(() => {
     if (!selectedFilePath) return;
     navigator.clipboard.writeText(selectedFilePath).then(() => showToast('File path copied'));
@@ -785,6 +792,13 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                       <Pencil size={13} strokeWidth={1.75} />
                     </button>
                   </Tooltip>
+                  {selectedFilePath && (
+                    <InlineIconLink
+                      icon={ExternalLink}
+                      label={`Open ${selectedFilePath.split('/').pop()} with default app`}
+                      onClick={() => handleOpenPath(selectedFilePath, true)}
+                    />
+                  )}
                   {onOpenInDiff && selectedFilePath && gitStatusMap[selectedFilePath] && gitStatusMap[selectedFilePath] !== '!!' && (
                     <InlineIconLink icon={GitCommit} label="View in Diff" onClick={() => onOpenInDiff(selectedFilePath.split('/').pop())} />
                   )}
@@ -1158,6 +1172,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                     selectedFilePath={selectedFilePath}
                     gitStatusMap={gitStatusMap}
                     onOpenInDiff={onOpenInDiff}
+                    onOpenPath={handleOpenPath}
                   />
                 )}
               </div>
@@ -1282,6 +1297,7 @@ export function ExplorerPanel({ sessions, theme, onSelectSession, focusedSession
                   selectedFilePath={selectedFilePath}
                   gitStatusMap={gitStatusMap}
                   onOpenInDiff={onOpenInDiff}
+                  onOpenPath={handleOpenPath}
                   initialExpandedPaths={selectedSessionId ? treeExpandedPaths?.get(selectedSessionId) : undefined}
                   initialTreeData={selectedSessionId ? treeDataCache?.get(selectedSessionId) : undefined}
                   onExpandedPathsChange={selectedSessionId ? (paths) => onTreeExpandedPathsChange?.(selectedSessionId, paths) : undefined}

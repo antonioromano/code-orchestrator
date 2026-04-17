@@ -68,6 +68,18 @@ export const api = {
     return data.completions;
   },
 
+  openPath: async (sessionId: string, filePath: string): Promise<void> => {
+    const res = await authFetch(`${API_BASE}/fs/open`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, path: filePath }),
+    });
+    if (!res.ok) {
+      const err = await res.json() as { error?: string };
+      throw new Error(err.error || 'Failed to open');
+    }
+  },
+
   pickFolder: async (): Promise<string | null> => {
     const res = await authFetch(`${API_BASE}/fs/pick-folder`, { method: 'POST' });
     const data = await res.json();
