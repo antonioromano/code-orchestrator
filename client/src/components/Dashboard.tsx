@@ -14,13 +14,12 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus, GitBranch, FolderOpen, X, AlertTriangle } from 'lucide-react';
+import { Plus, GitBranch, FolderOpen, X } from 'lucide-react';
 import { TerminalPanel } from './TerminalPanel.js';
 import { SessionGroup } from './SessionGroup.js';
 import { GitDiffPanel } from './GitDiffPanel.js';
 import { ExplorerPanel } from './ExplorerPanel.js';
 import { useGitDiff } from '../hooks/useGitDiff.js';
-import { Tooltip } from './primitives/index.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
 import { SessionSidebar } from './SessionSidebar.js';
 import { CollapsedChipRow } from './CollapsedChipRow.js';
@@ -60,6 +59,8 @@ interface DashboardProps {
   onCloseDiff: (sessionId: string) => void;
   getExplorerState: (sessionId: string) => DiffState;
   onToggleExplorer: (sessionId: string) => void;
+  unreadSessions?: Set<string>;
+  sidebarSettingsMenu?: React.ReactNode;
 }
 
 function groupSessionsByFolder(sessions: SessionInfo[]): Map<string, SessionInfo[]> {
@@ -131,14 +132,6 @@ function FocusedDiffWrapper({
   );
 }
 
-function GitDirtyIcon() {
-  return (
-    <Tooltip content="Uncommitted changes" position="bottom">
-      <AlertTriangle size={13} color="var(--color-status-waiting)" strokeWidth={2} style={{ flexShrink: 0 }} />
-    </Tooltip>
-  );
-}
-
 export function Dashboard({
   sessions,
   socket,
@@ -157,6 +150,8 @@ export function Dashboard({
   onCloseDiff,
   getExplorerState,
   onToggleExplorer,
+  unreadSessions,
+  sidebarSettingsMenu,
 }: DashboardProps) {
   const isFocused = !!focusedSessionId;
   const focusedSession = isFocused ? sessions.find((s) => s.id === focusedSessionId) : null;
@@ -358,103 +353,6 @@ export function Dashboard({
             background: 'var(--color-bg-base)',
           }}
         >
-          {/* Focus header bar — desktop only (hidden on mobile via CSS) */}
-          <div
-            className="focus-header-desktop"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '6px 16px',
-              background: 'var(--color-bg-elevated)',
-              borderBottom: '1px solid var(--color-border-ghost)',
-              flexShrink: 0,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-              <span style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                {focusedSession.name}
-              </span>
-              {focusedSession.hasGitChanges && (
-                <GitDirtyIcon />
-              )}
-              <span
-                style={{
-                  fontSize: 'var(--text-sm)',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--color-text-muted)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {focusedSession.folderPath}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Tooltip content="New session in this folder" position="bottom">
-                <button
-                  onClick={() => onCloneSession(focusedSession.folderPath, focusedSession.agentType)}
-                  style={focusBarBtnStyle}
-                  aria-label="New session in this folder"
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-surface)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Plus size={13} strokeWidth={2} />
-                  Session
-                </button>
-              </Tooltip>
-              <Tooltip content="Toggle diff view" position="bottom">
-                <button
-                  onClick={() => onToggleDiff(focusedSession.id)}
-                  style={{
-                    ...focusBarBtnStyle,
-                    background: getDiffState(focusedSession.id).isOpen ? 'var(--color-accent)' : 'transparent',
-                    color: getDiffState(focusedSession.id).isOpen ? '#ffffff' : 'var(--color-text-secondary)',
-                    borderColor: getDiffState(focusedSession.id).isOpen ? 'transparent' : 'var(--color-border-subtle)',
-                  }}
-                  aria-label="Toggle diff view"
-                  onMouseEnter={(e) => {
-                    if (!getDiffState(focusedSession.id).isOpen)
-                      e.currentTarget.style.background = 'var(--color-bg-elevated)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = getDiffState(focusedSession.id).isOpen
-                      ? 'var(--color-accent)'
-                      : 'transparent';
-                  }}
-                >
-                  <GitBranch size={13} strokeWidth={1.75} />
-                  Diff
-                </button>
-              </Tooltip>
-              <Tooltip content="Toggle explorer view" position="bottom">
-                <button
-                  onClick={() => onToggleExplorer(focusedSession.id)}
-                  style={{
-                    ...focusBarBtnStyle,
-                    background: getExplorerState(focusedSession.id).isOpen ? 'var(--color-accent)' : 'transparent',
-                    color: getExplorerState(focusedSession.id).isOpen ? '#ffffff' : 'var(--color-text-secondary)',
-                    borderColor: getExplorerState(focusedSession.id).isOpen ? 'transparent' : 'var(--color-border-subtle)',
-                  }}
-                  aria-label="Toggle explorer view"
-                  onMouseEnter={(e) => {
-                    if (!getExplorerState(focusedSession.id).isOpen)
-                      e.currentTarget.style.background = 'var(--color-bg-elevated)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = getExplorerState(focusedSession.id).isOpen
-                      ? 'var(--color-accent)'
-                      : 'transparent';
-                  }}
-                >
-                  <FolderOpen size={13} strokeWidth={1.75} />
-                  Explorer
-                </button>
-              </Tooltip>
-            </div>
-          </div>
-
           {/* Mobile focus header — visible only on mobile via CSS */}
           <div
             className="focus-header-mobile"
@@ -545,26 +443,49 @@ export function Dashboard({
               activeSessionId={focusedSessionId}
               onSelectSession={handleSwitchFocus}
               width={sidebarWidth}
+              unreadSessions={unreadSessions}
               headerAction={
-                <button
-                  onClick={handleUnfocus}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--color-text-muted)',
-                    cursor: 'pointer',
-                    padding: '2px',
-                    display: 'inline-flex',
-                    borderRadius: 'var(--radius-sm)',
-                    transition: 'color var(--transition-fast)',
-                  }}
-                  title="Exit focus mode"
-                  aria-label="Exit focus mode"
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text-primary)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
-                >
-                  <X size={14} strokeWidth={1.75} />
-                </button>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  {sidebarSettingsMenu}
+                  <button
+                    onClick={onCreateSession}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--color-success)',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      display: 'inline-flex',
+                      borderRadius: 'var(--radius-sm)',
+                      transition: 'background var(--transition-fast)',
+                    }}
+                    title="New session"
+                    aria-label="New session"
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <Plus size={14} strokeWidth={2.25} />
+                  </button>
+                  <button
+                    onClick={handleUnfocus}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--color-text-muted)',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      display: 'inline-flex',
+                      borderRadius: 'var(--radius-sm)',
+                      transition: 'color var(--transition-fast)',
+                    }}
+                    title="Exit focus mode"
+                    aria-label="Exit focus mode"
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                  >
+                    <X size={14} strokeWidth={1.75} />
+                  </button>
+                </div>
               }
             />
             <ResizeDivider isDragging={isSidebarDragging} onMouseDown={handleSidebarDividerMouseDown} />
@@ -616,6 +537,7 @@ export function Dashboard({
                             isDiffOpen={diffState.isOpen}
                             onToggleExplorer={onToggleExplorer}
                             isExplorerOpen={explorerState.isOpen}
+                            onCloneSession={onCloneSession}
                           />
                         </ErrorBoundary>
                       </div>

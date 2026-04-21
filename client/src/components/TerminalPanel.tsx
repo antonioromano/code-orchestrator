@@ -5,7 +5,7 @@ import type { Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@remote-orchestrator/shared';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Maximize2, Minimize2, Minus, GitCompare, FolderOpen, X, Move, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Maximize2, Minimize2, Minus, GitCompare, FolderOpen, X, Move, RotateCcw, AlertTriangle, Plus } from 'lucide-react';
 import { useTerminal } from '../hooks/useTerminal.js';
 import { StatusPill } from './primitives/index.js';
 import { Badge } from './primitives/index.js';
@@ -27,6 +27,7 @@ interface TerminalPanelProps {
   isDiffOpen?: boolean;
   onToggleExplorer?: (id: string) => void;
   isExplorerOpen?: boolean;
+  onCloneSession?: (folderPath: string, agentType?: string) => void;
 }
 
 const QUICK_ACTIONS = [
@@ -45,7 +46,7 @@ const QUICK_ACTIONS = [
   { label: 'Tab', data: '\t', title: 'Tab' },
 ];
 
-export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onFocus, onUnfocus, onCollapse, onToggleDiff, isDiffOpen, onToggleExplorer, isExplorerOpen }: TerminalPanelProps) {
+export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onFocus, onUnfocus, onCollapse, onToggleDiff, isDiffOpen, onToggleExplorer, isExplorerOpen, onCloneSession }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   useTerminal(containerRef, { sessionId: session.id, socket, theme });
 
@@ -206,8 +207,21 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
         {/* Right: action buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
 
+          {onCloneSession && (
+            <Tooltip content="New session in this folder" position="bottom">
+              <button
+                onClick={() => onCloneSession(session.folderPath, session.agentType)}
+                className="hover-bg-surface"
+                style={{ ...iconBtnStyle, color: 'var(--color-success)' }}
+                aria-label="New session in this folder"
+              >
+                <Plus size={14} strokeWidth={2.25} />
+              </button>
+            </Tooltip>
+          )}
+
           {onToggleDiff && (
-            <Tooltip content="Toggle diff view" position="top">
+            <Tooltip content="Toggle diff view" position="bottom">
               <button
                 onClick={() => onToggleDiff(session.id)}
                 className={isDiffOpen ? '' : 'hover-bg-surface'}
@@ -224,7 +238,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           )}
 
           {onToggleExplorer && (
-            <Tooltip content="Toggle explorer view" position="top">
+            <Tooltip content="Toggle explorer view" position="bottom">
               <button
                 onClick={() => onToggleExplorer(session.id)}
                 className={isExplorerOpen ? '' : 'hover-bg-surface'}
@@ -241,7 +255,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           )}
 
           {onFocus && (
-            <Tooltip content="Focus session" position="top">
+            <Tooltip content="Focus session" position="bottom">
               <button
                 onClick={() => onFocus(session.id)}
                 className="hover-bg-surface"
@@ -254,7 +268,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           )}
 
           {onCollapse && (
-            <Tooltip content="Minimize to chip" position="top">
+            <Tooltip content="Minimize to chip" position="bottom">
               <button
                 onClick={() => onCollapse(session.id)}
                 className="hover-bg-surface"
@@ -267,7 +281,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           )}
 
           {onUnfocus && (
-            <Tooltip content="Close focus" position="top">
+            <Tooltip content="Close focus" position="bottom">
               <button
                 onClick={onUnfocus}
                 className="hover-bg-surface"
@@ -280,7 +294,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
           )}
 
           {onRestart && (
-            <Tooltip content={session.status === 'exited' ? 'Restart session' : 'Restart session (kills current)'} position="top">
+            <Tooltip content={session.status === 'exited' ? 'Restart session' : 'Restart session (kills current)'} position="bottom">
               <button
                 onClick={() => onRestart(session.id)}
                 className="hover-success"
@@ -292,7 +306,7 @@ export function TerminalPanel({ session, socket, theme, onDelete, onRestart, onF
             </Tooltip>
           )}
 
-          <Tooltip content="Close session" position="top">
+          <Tooltip content="Close session" position="bottom">
             <button
               onClick={() => onDelete(session.id)}
               className="hover-error"

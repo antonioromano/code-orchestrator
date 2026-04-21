@@ -233,12 +233,8 @@ body {
     opacity: 0.8;
   }
 
-  /* Focus mode: hide desktop sidebar and header, show mobile dropdown header */
+  /* Focus mode: hide desktop sidebar, show mobile dropdown header */
   .focus-sidebar {
-    display: none !important;
-  }
-
-  .focus-header-desktop {
     display: none !important;
   }
 
