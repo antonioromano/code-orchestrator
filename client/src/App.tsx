@@ -553,6 +553,22 @@ function AppInner() {
     document.title = waitingCount > 0 ? `(${waitingCount}) Argus` : 'Argus';
   }, [waitingCount]);
 
+  // Swap the favicon based on session state: green when at least one session is idle, orange otherwise.
+  useEffect(() => {
+    const hasIdle = sessions.some((s) => s.status === 'idle');
+    const href = hasIdle ? '/favicon-green.svg' : '/favicon-orange.svg';
+    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/svg+xml';
+      document.head.appendChild(link);
+    }
+    if (link.getAttribute('href') !== href) {
+      link.setAttribute('href', href);
+    }
+  }, [sessions]);
+
   const ngrokBorderColor = ngrok.status?.tunnelStatus === 'connected'
     ? 'var(--color-success)'
     : 'var(--color-border-subtle)';

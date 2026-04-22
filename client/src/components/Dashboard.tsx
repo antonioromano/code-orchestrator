@@ -548,7 +548,8 @@ export function Dashboard({
                     {diffState.isOpen && (
                       <div
                         style={{
-                          width: `${diffPanelWidth}%`,
+                          width: diffFullscreen ? undefined : `${diffPanelWidth}%`,
+                          flex: diffFullscreen ? 1 : undefined,
                           minWidth: '200px',
                           display: 'flex',
                           flexDirection: 'column',
@@ -574,7 +575,8 @@ export function Dashboard({
                     {explorerState.isOpen && (
                       <div
                         style={{
-                          width: `${explorerPanelWidth}%`,
+                          width: explorerFullscreen ? undefined : `${explorerPanelWidth}%`,
+                          flex: explorerFullscreen ? 1 : undefined,
                           minWidth: '200px',
                           display: 'flex',
                           flexDirection: 'column',
