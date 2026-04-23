@@ -1,172 +1,207 @@
 import type { SessionStatus } from '@remote-orchestrator/shared';
+import type { Terminal as XTerminal, ITerminalOptions, ITerminalInitOnlyOptions } from '@xterm/headless';
+// The @xterm/headless package's main entry is CJS (lib-headless/xterm-headless.js);
+// Node's ESM↔CJS interop can't statically detect the `exports.Terminal = …`
+// assignment pattern it uses, so a named import throws at load time.
+// Default-import the module object and pull `Terminal` off it instead.
+import xtermHeadless from '@xterm/headless';
+const Terminal = (xtermHeadless as unknown as {
+  Terminal: new (opts?: ITerminalOptions & ITerminalInitOnlyOptions) => XTerminal;
+}).Terminal;
 
-// ECMA-48 compliant ANSI escape sequence stripper.
-// The old CSI class [0-9;?>=]* was missing ':' (0x3A) and '<' (0x3C), causing
-// modern sequences like \x1b[38:2:255:0:0m (colon-separated 24-bit color) to
-// fail stripping and leave artifacts ([38:2:255:0:0m) in the buffer.
-const STRIP_ANSI = new RegExp(
-  [
-    '\\x1b\\[[\\x30-\\x3f]*[\\x20-\\x2f]*[\\x40-\\x7e]', // CSI: full param range (0x30-0x3F incl. : and <)
-    '\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)',           // OSC sequences
-    '\\x1b[P_^][^\\x1b]*\\x1b\\\\',                        // DCS, APC, PM string sequences
-    '\\x1b[()#][A-Z0-9]',                                   // Character set designations
-    '\\x1b[\\x20-\\x2f]*[\\x30-\\x7e]',                    // Other ESC sequences (Fp, Fe, Fs)
-    '\\r',                                                   // Carriage returns
-  ].join('|'),
-  'g'
-);
-
+/**
+ * Prompt patterns evaluated against individual rendered rows from the terminal's
+ * screen grid — NOT against the raw byte stream. This lets us anchor to line
+ * start/end and recognize the specific shape of each agent's input box.
+ */
 const AGENT_PROMPT_PATTERNS: Record<string, RegExp[]> = {
   claude: [
-    />\s*$/,
-    /\(y\/n\)\s*$/i,
-    /\[Y\/n\]\s*$/,
-    /\[y\/N\]\s*$/,
-    /Press Enter to continue/i,
-    /Allow once/i,
-    /Do you want to/i,
-    /Would you like to/i,
-    /Esc to cancel/i,
-    /Enter to confirm/i,
-    /\?\s*$/,
+    /[│|┃]\s*>\s/,               // input-box row: "│ > …"
+    /[│|┃]\s*❯\s/,               // alt prompt glyph
+    /\(y\/n\)/i,
+    /\[y\/n\]/i,
+    /\[Y\/n\]/,
+    /\[y\/N\]/,
     /Do you want to proceed/i,
-    /don't ask again for/i,
+    /don.?t ask again for/i,
+    /Allow once/i,
+    /always allow access/i,
     /auto-accept edits/i,
     /manually approve edits/i,
-    /Tell Claude what to change/i,
     /shift\+tab to approve/i,
-    /always allow access/i,
+    /Esc to cancel/i,
+    /Tell Claude what to change/i,
+    /Press Enter to continue/i,
   ],
   gemini: [
-    />\s*$/,
-    /\(y\/n\)\s*$/i,
-    /\[Y\/n\]\s*$/,
-    /\[y\/N\]\s*$/,
+    /[│|┃]\s*>\s/,
+    /\(y\/n\)/i,
+    /\[y\/n\]/i,
     /Yes\s*\/\s*No/i,
-    /Confirm/i,
   ],
   codex: [
-    />\s*$/,
-    /\(y\/n\)\s*$/i,
-    /\[Y\/n\]\s*$/,
-    /\[y\/N\]\s*$/,
+    /[│|┃]\s*>\s/,
+    /\(y\/n\)/i,
+    /\[y\/n\]/i,
     /approve/i,
   ],
 };
 
 const DEFAULT_PROMPT_PATTERNS: RegExp[] = [
-  />\s*$/,
-  /\$\s*$/,
-  /#\s*$/,
-  /\(y\/n\)\s*$/i,
-  /\[Y\/n\]\s*$/,
-  /\[y\/N\]\s*$/,
+  /^\$\s*$/,
+  /^#\s*$/,
+  /^>\s*$/,
+  /\(y\/n\)/i,
+  /\[y\/n\]/i,
 ];
 
+const IDLE_SETTLE_MS = 500;
+const DEBOUNCE_MS = 300;
+const ACTIVITY_WINDOW_MS = 150;
+const ACTIVITY_MIN_FEEDS = 3;
+const SCAN_ROWS = 10;                 // rows from the bottom of the visible window to scan
+const CURSOR_ESC_WINDOW_MS = 1500;    // how long a recent cursor-style change counts as a hint
+
+/**
+ * State detector built on top of a headless xterm.js terminal emulator.
+ *
+ * Each pty byte stream is fed into the emulator so we can read the actual
+ * rendered screen (and the cursor position) instead of pattern-matching a
+ * flattened text log. This eliminates false positives from overlapping render
+ * frames and lets us use the cursor's row as a first-class signal.
+ */
 export class StateDetector {
-  private buffer = '';
+  private term: XTerminal;
+  private onStatusChange: (status: SessionStatus) => void;
+  private promptPatterns: RegExp[];
+  private currentStatus: SessionStatus = 'running';
+  private pendingStatus: SessionStatus | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private runningTimer: ReturnType<typeof setTimeout> | null = null;
   private feedCount = 0;
-  private currentStatus: SessionStatus = 'running';
-  private pendingStatus: SessionStatus | null = null;
-  private onStatusChange: (status: SessionStatus) => void;
-  private idleDelayMs: number;
-  private debounceMs: number;
-  private promptPatterns: RegExp[];
+  private lastCursorStyleAt = 0;
+  /** Serialises `term.write()` calls so buffer reads happen after the parser has caught up. */
+  private writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(onStatusChange: (status: SessionStatus) => void, agentType: string = 'claude', idleDelayMs = 800) {
+  constructor(
+    onStatusChange: (status: SessionStatus) => void,
+    agentType: string = 'claude',
+    cols: number = 120,
+    rows: number = 30,
+  ) {
     this.onStatusChange = onStatusChange;
-    this.idleDelayMs = idleDelayMs;
-    this.debounceMs = 300;
     this.promptPatterns = AGENT_PROMPT_PATTERNS[agentType] ?? DEFAULT_PROMPT_PATTERNS;
+    this.term = new Terminal({
+      cols,
+      rows,
+      allowProposedApi: true,
+      scrollback: 500,
+    });
+
+    // DECSCUSR (`\e[<n> q`) — cursor-style change. Many TUIs emit this when
+    // the input box becomes active. Record the timestamp; we treat a very
+    // recent one as a 'waiting' hint during settle().
+    // `intermediates: ' '` matches the single-space intermediate in DECSCUSR.
+    this.term.parser.registerCsiHandler({ intermediates: ' ', final: 'q' }, () => {
+      this.lastCursorStyleAt = Date.now();
+      return false; // fall through to default handling
+    });
+  }
+
+  resize(cols: number, rows: number): void {
+    if (cols <= 0 || rows <= 0) return;
+    try {
+      this.term.resize(cols, rows);
+    } catch {
+      // xterm throws on invalid sizes — ignore and keep current grid
+    }
   }
 
   feed(data: string): void {
-    // Replace escape sequences with a space (not empty string) to preserve word
-    // boundaries. TUI apps like Claude Code's Ink renderer use cursor positioning
-    // instead of literal space characters — stripping to '' merges words together,
-    // making prompt patterns like /Do you want to/ fail to match.
-    const stripped = data
-      .replace(STRIP_ANSI, ' ')
-      .replace(/\x1b/g, '')
-      .replace(/ {2,}/g, ' ')
-      .replace(/\n{3,}/g, '\n\n');
-    this.buffer += stripped;
+    // Feed raw bytes (ANSI and all) to the emulator so the grid updates correctly.
+    this.writeQueue = this.writeQueue.then(
+      () => new Promise<void>((resolve) => {
+        this.term.write(data, () => resolve());
+      }),
+    );
 
-    // Keep buffer at reasonable size — must be larger than the tail check window (1500)
-    if (this.buffer.length > 8000) {
-      this.buffer = this.buffer.slice(-4000);
-    }
-
-    // Reset idle timer
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-
-    // Only check for prompt patterns here — never set 'running' directly from
-    // feed(). Periodic re-renders (status bar, resize redraws) produce small
-    // output bursts that don't mean the agent is actively working. Instead,
-    // 'running' is set only after sustained output (see runningTimer below).
-    const tail = this.buffer.slice(-1500).trim();
-    const matched = this.promptPatterns.some(p => p.test(tail));
-    if (process.env['DEBUG_STATE']) {
-      console.log(`[StateDetector] matched=${matched} tail(last200)=${JSON.stringify(tail.slice(-200))}`);
-    }
-    if (matched) {
-      this.scheduleStatus('waiting');
-    }
-
-    // Track sustained output — only transition to 'running' if we receive
-    // multiple feed() calls within a short window, indicating real activity
-    // rather than a one-off re-render.
+    // Sustained-output heuristic: many feeds in a short window suggests the
+    // agent is actively producing output rather than just repainting.
     this.feedCount++;
     if (this.runningTimer) clearTimeout(this.runningTimer);
     this.runningTimer = setTimeout(() => {
-      // If we got several feed() calls in quick succession and no prompt
-      // was matched, that's real output → mark as running.
-      if (this.feedCount >= 3 && !matched) {
-        this.scheduleStatus('running');
-      }
+      const count = this.feedCount;
       this.feedCount = 0;
       this.runningTimer = null;
-    }, 150);
+      if (count >= ACTIVITY_MIN_FEEDS) {
+        // Gate on actual screen state — don't flicker to 'running' if the
+        // input box is already visible (Claude re-renders its prompt frequently).
+        this.writeQueue.then(() => {
+          if (!this.screenShowsPrompt()) this.scheduleStatus('running');
+        });
+      }
+    }, ACTIVITY_WINDOW_MS);
 
-    // Check after output settles for idle/waiting detection
+    // After output settles, classify based on what's actually on the screen.
+    if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      this.checkForPrompt();
-    }, this.idleDelayMs);
+      this.writeQueue.then(() => this.settle());
+    }, IDLE_SETTLE_MS);
   }
 
-  private checkForPrompt(): void {
-    const tail = this.buffer.slice(-1500).trim();
+  private settle(): void {
+    const hasPrompt = this.screenShowsPrompt();
+    const recentCursorStyle = Date.now() - this.lastCursorStyleAt < CURSOR_ESC_WINDOW_MS;
 
-    for (const pattern of this.promptPatterns) {
-      if (pattern.test(tail)) {
-        this.scheduleStatus('waiting');
-        return;
-      }
+    if (hasPrompt || recentCursorStyle) {
+      this.scheduleStatus('waiting');
+    } else {
+      this.scheduleStatus('idle');
     }
 
-    // Output stopped but no prompt detected — idle/done.
-    // Goes through debounce so that a brief pause followed by more output
-    // (e.g. startup renders, status bar repaints) doesn't flicker to idle.
-    this.scheduleStatus('idle');
+    if (process.env['DEBUG_STATE']) {
+      const snapshot = this.visibleRows().join('\n');
+      console.log(
+        `[StateDetector] settle hasPrompt=${hasPrompt} recentCursorStyle=${recentCursorStyle} cursor=(${this.term.buffer.active.cursorX},${this.term.buffer.active.cursorY})\n` +
+          snapshot,
+      );
+    }
+  }
+
+  /** Collect the last SCAN_ROWS visible rows as text. */
+  private visibleRows(): string[] {
+    const buf = this.term.buffer.active;
+    const rows = this.term.rows;
+    const start = Math.max(0, rows - SCAN_ROWS);
+    const lines: string[] = [];
+    for (let y = start; y < rows; y++) {
+      const line = buf.getLine(buf.viewportY + y)?.translateToString(true);
+      if (line) lines.push(line);
+    }
+    return lines;
+  }
+
+  /** True if any of the last few visible rows looks like a prompt / input box. */
+  private screenShowsPrompt(): boolean {
+    const lines = this.visibleRows();
+    for (const line of lines) {
+      for (const p of this.promptPatterns) {
+        if (p.test(line)) return true;
+      }
+    }
+    return false;
   }
 
   /**
-   * Debounced status scheduling — prevents rapid flickering by requiring the
-   * desired status to remain consistent for `debounceMs` before emitting.
+   * Debounced status update — requires the desired status to remain stable for
+   * DEBOUNCE_MS before emitting, to avoid flicker from brief re-renders.
    */
   private scheduleStatus(status: SessionStatus): void {
-    // If this is already what we'd emit, nothing to do
     if (status === this.currentStatus && this.pendingStatus === null) return;
-
-    // If the pending status is the same, let the existing timer run
     if (status === this.pendingStatus) return;
-
     this.pendingStatus = status;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
-
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
       if (this.pendingStatus !== null && this.pendingStatus !== this.currentStatus) {
@@ -174,17 +209,7 @@ export class StateDetector {
         this.onStatusChange(this.currentStatus);
       }
       this.pendingStatus = null;
-    }, this.debounceMs);
-  }
-
-  /** Immediate status update — bypasses debounce (used for exited, idle from timer). */
-  private updateStatus(status: SessionStatus): void {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.pendingStatus = null;
-    if (status !== this.currentStatus) {
-      this.currentStatus = status;
-      this.onStatusChange(status);
-    }
+    }, DEBOUNCE_MS);
   }
 
   getStatus(): SessionStatus {
@@ -193,12 +218,19 @@ export class StateDetector {
 
   setExited(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.updateStatus('exited');
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    if (this.runningTimer) clearTimeout(this.runningTimer);
+    this.pendingStatus = null;
+    if (this.currentStatus !== 'exited') {
+      this.currentStatus = 'exited';
+      this.onStatusChange('exited');
+    }
   }
 
   destroy(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     if (this.runningTimer) clearTimeout(this.runningTimer);
+    this.term.dispose();
   }
 }

@@ -234,6 +234,7 @@ export class SessionManager {
     if (!session) throw new Error(`Session ${id} not found`);
     if (session.status === 'exited') return;
     this.ptyManager.resize(session.pty, cols, rows);
+    session.stateDetector.resize(cols, rows);
   }
 
   async restoreSessions(): Promise<void> {

@@ -176,6 +176,7 @@ export function SessionGroup({
                 onCollapse={onCollapse}
                 onToggleDiff={onToggleDiff}
                 onToggleExplorer={onToggleExplorer}
+                onCloneSession={onCloneSession}
               />
             </ErrorBoundary>
           ))}

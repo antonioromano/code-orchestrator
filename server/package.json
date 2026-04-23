@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@remote-orchestrator/shared": "*",
+    "@xterm/headless": "^6.0.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "node-pty": "^1.1.0",

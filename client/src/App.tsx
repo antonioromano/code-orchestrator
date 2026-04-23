@@ -9,7 +9,7 @@ import { useUpdate } from './hooks/useUpdate.js';
 import { useConfig } from './hooks/useConfig.js';
 import { useGitDiff } from './hooks/useGitDiff.js';
 import { useNotifications } from './hooks/useNotifications.js';
-import type { SessionInfo } from '@remote-orchestrator/shared';
+import type { SessionInfo, SessionStatus } from '@remote-orchestrator/shared';
 import { Dashboard } from './components/Dashboard.js';
 import { CreateSessionModal } from './components/CreateSessionModal.js';
 import { CloneSessionModal } from './components/CloneSessionModal.js';
@@ -23,6 +23,7 @@ import { EphemeralTerminal } from './components/EphemeralTerminal.js';
 import type { TreeNode } from './components/ExplorerFolderTree.js';
 import type { AppTab } from './components/NavTabs.js';
 import { MobileBottomNav } from './components/MobileBottomNav.js';
+import { SidebarSettingsMenu } from './components/SidebarSettingsMenu.js';
 import { api, setToken } from './services/api.js';
 import { WifiOff, Settings, Maximize2, Minimize2, Globe, ArrowUpCircle, Sun, Moon, Loader2, Terminal, GitBranch, FolderOpen } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
@@ -219,6 +220,14 @@ function AppInner() {
     document.documentElement.style.setProperty('--shared-terminal-height', isTerminalVisible ? `${sharedTerminalHeight}px` : '0px');
   }, [sharedTerminalOpen, activeTab, sharedTerminalHeight]);
 
+  // In focus mode the main header is hidden — override --header-height to 0 so layouts fill the viewport
+  useEffect(() => {
+    if (focusedSessionId) {
+      document.documentElement.style.setProperty('--header-height', '0px');
+      return () => { document.documentElement.style.removeProperty('--header-height'); };
+    }
+  }, [focusedSessionId]);
+
   // Refit terminals when shared terminal resize ends
   const prevTerminalDragging = useRef(false);
   useEffect(() => {
@@ -374,14 +383,62 @@ function AppInner() {
     setPendingRestartId(null);
   }, [pendingRestartId]);
 
+  // Stack of previously-focused session ids. When the focused session is closed,
+  // we pop the most recent still-alive id instead of exiting focus mode.
+  const focusHistoryRef = useRef<string[]>([]);
+
+  // Sessions with pending output the user hasn't seen. A session is marked unread
+  // when it transitions into 'idle' while not currently focused; it is cleared on focus.
+  const [unreadSessions, setUnreadSessions] = useState<Set<string>>(new Set());
+  const prevStatusesRef = useRef<Map<string, SessionStatus>>(new Map());
+  useEffect(() => {
+    setUnreadSessions((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      const liveIds = new Set<string>();
+      for (const s of sessions) {
+        liveIds.add(s.id);
+        const prevStatus = prevStatusesRef.current.get(s.id);
+        if (prevStatus && prevStatus !== 'idle' && s.status === 'idle' && s.id !== focusedSessionId) {
+          if (!next.has(s.id)) {
+            next.add(s.id);
+            changed = true;
+          }
+        }
+        prevStatusesRef.current.set(s.id, s.status);
+      }
+      for (const id of Array.from(next)) {
+        if (!liveIds.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      for (const id of Array.from(prevStatusesRef.current.keys())) {
+        if (!liveIds.has(id)) prevStatusesRef.current.delete(id);
+      }
+      return changed ? next : prev;
+    });
+  }, [sessions, focusedSessionId]);
+
   const handleDeleteConfirm = useCallback(async () => {
     if (!pendingDeleteId) return;
     if (focusedSessionId === pendingDeleteId) {
-      setFocusedSessionId(null);
+      const liveIds = new Set(sessions.filter((s) => s.id !== pendingDeleteId).map((s) => s.id));
+      let previous: string | null = null;
+      while (focusHistoryRef.current.length > 0) {
+        const candidate = focusHistoryRef.current.pop()!;
+        if (liveIds.has(candidate)) {
+          previous = candidate;
+          break;
+        }
+      }
+      setFocusedSessionId(previous);
+    } else {
+      focusHistoryRef.current = focusHistoryRef.current.filter((h) => h !== pendingDeleteId);
     }
     await deleteSession(pendingDeleteId);
     setPendingDeleteId(null);
-  }, [pendingDeleteId, focusedSessionId, deleteSession]);
+  }, [pendingDeleteId, focusedSessionId, sessions, deleteSession]);
 
   // On mobile, keep focus mode always active — auto-focus first session when none is focused
   useEffect(() => {
@@ -391,10 +448,23 @@ function AppInner() {
   }, [isMobile, focusedSessionId, sessions]);
 
   const handleFocus = useCallback((id: string) => {
-    setFocusedSessionId(id);
+    setUnreadSessions((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setFocusedSessionId((prev) => {
+      if (prev !== null && prev !== id) {
+        focusHistoryRef.current = focusHistoryRef.current.filter((h) => h !== id);
+        focusHistoryRef.current.push(prev);
+      }
+      return id;
+    });
   }, []);
 
   const handleUnfocus = useCallback(() => {
+    focusHistoryRef.current = [];
     setFocusedSessionId(null);
   }, []);
 
@@ -483,6 +553,22 @@ function AppInner() {
     document.title = waitingCount > 0 ? `(${waitingCount}) Argus` : 'Argus';
   }, [waitingCount]);
 
+  // Swap the favicon based on session state: green when at least one session is idle, orange otherwise.
+  useEffect(() => {
+    const hasIdle = sessions.some((s) => s.status === 'idle');
+    const href = hasIdle ? '/favicon-green.svg' : '/favicon-orange.svg';
+    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/svg+xml';
+      document.head.appendChild(link);
+    }
+    if (link.getAttribute('href') !== href) {
+      link.setAttribute('href', href);
+    }
+  }, [sessions]);
+
   const ngrokBorderColor = ngrok.status?.tunnelStatus === 'connected'
     ? 'var(--color-success)'
     : 'var(--color-border-subtle)';
@@ -526,6 +612,7 @@ function AppInner() {
   return (
     <>
       <a href="#main-content" className="skip-link">Skip to main content</a>
+      {!focusedSessionId && (
       <header
         style={{
           display: 'flex',
@@ -686,6 +773,7 @@ function AppInner() {
           </button>
         </div>
       </header>
+      )}
 
       {!socketConnected && (
         <div
@@ -733,6 +821,18 @@ function AppInner() {
               onCloseDiff={handleCloseDiff}
               getExplorerState={getExplorerState}
               onToggleExplorer={handleToggleExplorer}
+              unreadSessions={unreadSessions}
+              sidebarSettingsMenu={
+                <SidebarSettingsMenu
+                  isDark={isDark}
+                  isFullscreen={isFullscreen}
+                  ngrokConnected={ngrok.status?.tunnelStatus === 'connected'}
+                  onOpenSettings={() => setShowSettingsModal(true)}
+                  onToggleFullscreen={toggleFullscreen}
+                  onOpenRemote={() => setShowNgrokModal(true)}
+                  onToggleTheme={toggleTheme}
+                />
+              }
             />
           </div>
         </ErrorBoundary>
