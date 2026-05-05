@@ -32,6 +32,7 @@ interface RemotePackageJson {
 
 export class UpdateService {
   private io: Server<ClientToServerEvents, ServerToClientEvents> | null = null;
+  private readonly installedVersion: string = getCurrentVersion();
   private latestVersion: string | null = null;
   private changelog: string = '';
   private releaseUrl: string = '';
@@ -56,11 +57,10 @@ export class UpdateService {
   }
 
   getStatus(): UpdateStatus {
-    const currentVersion = getCurrentVersion();
     return {
-      currentVersion,
+      currentVersion: this.installedVersion,
       latestVersion: this.latestVersion,
-      hasUpdate: this.latestVersion ? (semverGt(this.latestVersion, currentVersion) ?? false) : false,
+      hasUpdate: this.latestVersion ? (semverGt(this.latestVersion, this.installedVersion) ?? false) : false,
       changelog: this.changelog,
       releaseUrl: this.releaseUrl,
     };

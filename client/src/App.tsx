@@ -800,7 +800,7 @@ function AppInner() {
       {/* NavTabs merged into header — kept for mobile via MobileBottomNav */}
 
       <div id="main-content" style={{ display: 'contents' }}>
-      {activeTab === 'sessions' && (
+      <div style={{ display: activeTab === 'sessions' ? 'contents' : 'none' }}>
         <ErrorBoundary variant="tab" label="Sessions">
           <div role="tabpanel" id="tabpanel-sessions" aria-labelledby="tab-sessions" style={{ display: 'contents' }}>
             <Dashboard
@@ -836,8 +836,8 @@ function AppInner() {
             />
           </div>
         </ErrorBoundary>
-      )}
-      {activeTab === 'git-diff' && (
+      </div>
+      <div style={{ display: activeTab === 'git-diff' ? 'contents' : 'none' }}>
         <div role="tabpanel" id="tabpanel-git-diff" aria-labelledby="tab-git-diff" style={{ display: 'contents' }}>
           {sessions.length > 0 ? (
             <ErrorBoundary variant="tab" label="Git Diff">
@@ -869,8 +869,8 @@ function AppInner() {
             </div>
           )}
         </div>
-      )}
-      {activeTab === 'explorer' && (
+      </div>
+      <div style={{ display: activeTab === 'explorer' ? 'contents' : 'none' }}>
         <div role="tabpanel" id="tabpanel-explorer" aria-labelledby="tab-explorer" style={{ display: 'contents' }}>
           <ErrorBoundary variant="tab" label="Explorer">
             <ExplorerPanel
@@ -892,7 +892,7 @@ function AppInner() {
             />
           </ErrorBoundary>
         </div>
-      )}
+      </div>
 
       </div>
 
